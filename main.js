@@ -1,311 +1,897 @@
-// Game configuration
-const config = {
-    canvasWidth: 800,
-    canvasHeight: 600,
-    targetFPS: 60,
-    playerSpeed: 200, // pixels per second
-    enemySpeed: 50,
-    enemySpawnRate: 2000, // milliseconds
+// =========================================
+// Orbit-Bloom - Pure HTML5 Canvas Shooting Game
+// =========================================
+
+// Game Dimensions (Logical Coordinates)
+const GAME_WIDTH = 360;
+const GAME_HEIGHT = 640;
+
+// Player Parameters
+const PLAYER_PARAMS = {
+  moveSpeed: 200,
+  radius: 10,
+  hitRadius: 6,
+  shotInterval: 0.2,
+  dashSpeedMultiplier: 2.5,
+  dashDuration: 0.2,
+  dashCooldown: 2.0,
+  invincibleDurationOnHit: 1.0,
+  initialLives: 3,
 };
 
-// Game state
+// Enemy Parameters
+const ENEMY_PARAMS = {
+  basic: { speedY: 80, radius: 8, hp: 1, score: 10, color: '#FFD95A' },
+  zigzag: { speedY: 90, radius: 10, ampX: 30, freq: 2, hp: 1, score: 15, color: '#FF5AF2' },
+  homing: { speed: 100, radius: 9, turnInterval: 0.25, turnAngle: 0.2, hp: 2, score: 25, color: '#7CFF5A' },
+  shooter: { speedY: 60, radius: 12, shotInterval: 1.2, hp: 3, score: 30, color: '#FFA05A' },
+};
+
+// Bullet Parameters
+const BULLET_PARAMS = {
+  player: { speedY: -300, radius: 3, color: '#40E0FF' },
+  enemy: { radius: 3, color: '#FF5A5A' },
+};
+
+// Stage Configuration
+const stageConfigs = [
+  {
+    duration: 60,
+    phases: [
+      {
+        startTime: 0,
+        endTime: 20,
+        spawnRate: 0.5,
+        maxEnemies: 10,
+        allowedTypes: ['basic'],
+        enemySpeedMultiplier: 1.0,
+        bulletSpeed: 160,
+      },
+      {
+        startTime: 20,
+        endTime: 40,
+        spawnRate: 0.8,
+        maxEnemies: 15,
+        allowedTypes: ['basic', 'zigzag'],
+        enemySpeedMultiplier: 1.1,
+        bulletSpeed: 180,
+      },
+      {
+        startTime: 40,
+        endTime: 60,
+        spawnRate: 1.0,
+        maxEnemies: 20,
+        allowedTypes: ['basic', 'zigzag', 'shooter'],
+        enemySpeedMultiplier: 1.2,
+        bulletSpeed: 200,
+      },
+    ],
+  },
+];
+
+// =========================================
+// Game State
+// =========================================
+
 const gameState = {
-    player: {
-        x: 400,
-        y: 300,
-        size: 20,
-        color: '#00ff88',
-    },
-    enemies: [],
-    bullets: [],
-    score: 0,
-    lastEnemySpawn: 0,
-    keys: {},
-    mouse: { x: 0, y: 0 },
-    lastShot: 0,
-    shootCooldown: 200, // milliseconds
+  state: 'title', // 'title', 'playing', 'gameover'
+  score: 0,
+  timeLeft: 0,
+  elapsedTime: 0,
+  lives: PLAYER_PARAMS.initialLives,
+  stageIndex: 0,
+  player: null,
+  enemies: [],
+  bullets: [],
+  particles: [],
+  stars: [],
+  spawnAccumulator: 0,
+  keys: {},
+  mouse: { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 },
+  touch: null,
 };
 
-// Canvas setup
+// =========================================
+// Canvas Setup and Scaling
+// =========================================
+
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-canvas.width = config.canvasWidth;
-canvas.height = config.canvasHeight;
+let scale = 1;
+let offsetX = 0;
+let offsetY = 0;
 
-// UI elements
-const scoreElement = document.getElementById('score');
-const fpsElement = document.getElementById('fps');
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 
-// Input handling
-document.addEventListener('keydown', (e) => {
-    gameState.keys[e.key.toLowerCase()] = true;
-});
+  // Calculate scale to fit game area
+  const scaleX = canvas.width / GAME_WIDTH;
+  const scaleY = canvas.height / GAME_HEIGHT;
+  scale = Math.min(scaleX, scaleY);
 
-document.addEventListener('keyup', (e) => {
-    gameState.keys[e.key.toLowerCase()] = false;
-});
+  // Calculate offset to center the game
+  offsetX = (canvas.width - GAME_WIDTH * scale) / 2;
+  offsetY = (canvas.height - GAME_HEIGHT * scale) / 2;
+}
 
-canvas.addEventListener('mousemove', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    gameState.mouse.x = e.clientX - rect.left;
-    gameState.mouse.y = e.clientY - rect.top;
-});
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
 
-canvas.addEventListener('click', () => {
-    shoot();
-});
+// =========================================
+// Classes
+// =========================================
 
-// Game entities
-class Enemy {
-    constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.size = 15;
-        this.color = '#ff4444';
-        this.vx = (Math.random() - 0.5) * config.enemySpeed;
-        this.vy = (Math.random() - 0.5) * config.enemySpeed;
+class Player {
+  constructor() {
+    this.x = GAME_WIDTH / 2;
+    this.y = GAME_HEIGHT - 80;
+    this.vx = 0;
+    this.vy = 0;
+    this.radius = PLAYER_PARAMS.radius;
+    this.hitRadius = PLAYER_PARAMS.hitRadius;
+    this.color = '#40E0FF';
+
+    // Shooting
+    this.shotTimer = 0;
+
+    // Dash
+    this.dashTimer = 0;
+    this.dashCooldownTimer = 0;
+    this.isDashing = false;
+
+    // Invincibility
+    this.invincibleTimer = 0;
+  }
+
+  update(dt) {
+    // Handle input and movement
+    let moveX = 0;
+    let moveY = 0;
+
+    if (gameState.keys['w'] || gameState.keys['arrowup']) moveY -= 1;
+    if (gameState.keys['s'] || gameState.keys['arrowdown']) moveY += 1;
+    if (gameState.keys['a'] || gameState.keys['arrowleft']) moveX -= 1;
+    if (gameState.keys['d'] || gameState.keys['arrowright']) moveX += 1;
+
+    // Normalize diagonal movement
+    const magnitude = Math.sqrt(moveX * moveX + moveY * moveY);
+    if (magnitude > 0) {
+      moveX /= magnitude;
+      moveY /= magnitude;
     }
 
-    update(deltaTime) {
-        // Move towards player
+    // Apply dash multiplier
+    let speed = PLAYER_PARAMS.moveSpeed;
+    if (this.isDashing) {
+      speed *= PLAYER_PARAMS.dashSpeedMultiplier;
+    }
+
+    // Update position
+    this.x += moveX * speed * dt;
+    this.y += moveY * speed * dt;
+
+    // Clamp to screen bounds
+    this.x = Math.max(this.radius, Math.min(GAME_WIDTH - this.radius, this.x));
+    this.y = Math.max(this.radius, Math.min(GAME_HEIGHT - this.radius, this.y));
+
+    // Update timers
+    this.shotTimer -= dt;
+    this.dashCooldownTimer -= dt;
+    this.invincibleTimer -= dt;
+
+    if (this.isDashing) {
+      this.dashTimer -= dt;
+      if (this.dashTimer <= 0) {
+        this.isDashing = false;
+      }
+    }
+
+    // Auto-fire
+    if (this.shotTimer <= 0) {
+      this.shoot();
+      this.shotTimer = PLAYER_PARAMS.shotInterval;
+    }
+
+    // Create trail particles when moving
+    if (magnitude > 0.1 && Math.random() < 0.3) {
+      gameState.particles.push(new Particle(this.x, this.y, '#40E0FF', 0.5, 2));
+    }
+  }
+
+  shoot() {
+    const bullet = new Bullet(this.x, this.y, 0, -1, 'player');
+    gameState.bullets.push(bullet);
+  }
+
+  dash() {
+    if (this.dashCooldownTimer <= 0 && !this.isDashing) {
+      this.isDashing = true;
+      this.dashTimer = PLAYER_PARAMS.dashDuration;
+      this.dashCooldownTimer = PLAYER_PARAMS.dashCooldown;
+      this.invincibleTimer = PLAYER_PARAMS.dashDuration; // Invincible during dash
+    }
+  }
+
+  hit() {
+    if (this.invincibleTimer <= 0) {
+      gameState.lives--;
+      this.invincibleTimer = PLAYER_PARAMS.invincibleDurationOnHit;
+
+      // Create explosion particles
+      for (let i = 0; i < 20; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 50 + Math.random() * 100;
+        gameState.particles.push(new Particle(
+          this.x, this.y, '#40E0FF', 0.8, 3,
+          Math.cos(angle) * speed, Math.sin(angle) * speed
+        ));
+      }
+
+      if (gameState.lives <= 0) {
+        gameState.state = 'gameover';
+      }
+    }
+  }
+
+  isInvincible() {
+    return this.invincibleTimer > 0;
+  }
+
+  draw() {
+    const alpha = this.isInvincible() && Math.floor(Date.now() / 100) % 2 === 0 ? 0.3 : 1.0;
+
+    // Glow effect
+    if (!this.isInvincible() || alpha > 0.5) {
+      ctx.strokeStyle = `rgba(64, 224, 255, ${0.5 * alpha})`;
+      ctx.lineWidth = this.isDashing ? 5 : 3;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius + (this.isDashing ? 8 : 5), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Body (circle)
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = this.isDashing ? '#80F0FF' : this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius * (this.isDashing ? 1.2 : 1), 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wing (triangle below)
+    ctx.fillStyle = this.isDashing ? '#80F0FF' : this.color;
+    ctx.beginPath();
+    ctx.moveTo(this.x, this.y + this.radius);
+    ctx.lineTo(this.x - this.radius * 0.6, this.y + this.radius * 1.8);
+    ctx.lineTo(this.x + this.radius * 0.6, this.y + this.radius * 1.8);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.globalAlpha = 1.0;
+  }
+}
+
+class Enemy {
+  constructor(type, x, y, speedMultiplier = 1.0) {
+    this.type = type;
+    this.x = x;
+    this.y = y;
+    this.params = ENEMY_PARAMS[type];
+    this.radius = this.params.radius;
+    this.hp = this.params.hp;
+    this.color = this.params.color;
+    this.speedMultiplier = speedMultiplier;
+
+    // Type-specific properties
+    this.time = 0;
+    this.shotTimer = this.params.shotInterval || 0;
+    this.turnTimer = 0;
+    this.angle = Math.PI / 2; // Start moving down
+
+    // Initial velocity
+    if (type === 'basic') {
+      this.vy = this.params.speedY * speedMultiplier;
+      this.vx = 0;
+    } else if (type === 'zigzag') {
+      this.vy = this.params.speedY * speedMultiplier;
+      this.vx = 0;
+      this.startX = x;
+    } else if (type === 'homing') {
+      const speed = this.params.speed * speedMultiplier;
+      this.vx = 0;
+      this.vy = speed;
+    } else if (type === 'shooter') {
+      this.vy = this.params.speedY * speedMultiplier;
+      this.vx = 0;
+    }
+  }
+
+  update(dt, bulletSpeed) {
+    this.time += dt;
+
+    if (this.type === 'basic') {
+      this.y += this.vy * dt;
+    } else if (this.type === 'zigzag') {
+      this.y += this.vy * dt;
+      this.x = this.startX + Math.sin(this.time * this.params.freq) * this.params.ampX;
+    } else if (this.type === 'homing') {
+      this.turnTimer += dt;
+      if (this.turnTimer >= this.params.turnInterval) {
+        this.turnTimer = 0;
+        // Adjust angle slightly toward player
         const dx = gameState.player.x - this.x;
         const dy = gameState.player.y - this.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        if (distance > 0) {
-            this.x += (dx / distance) * config.enemySpeed * deltaTime;
-            this.y += (dy / distance) * config.enemySpeed * deltaTime;
+        const targetAngle = Math.atan2(dy, dx);
+        const angleDiff = targetAngle - this.angle;
+        // Normalize angle difference
+        let normalizedDiff = angleDiff;
+        while (normalizedDiff > Math.PI) normalizedDiff -= Math.PI * 2;
+        while (normalizedDiff < -Math.PI) normalizedDiff += Math.PI * 2;
+        this.angle += Math.sign(normalizedDiff) * Math.min(Math.abs(normalizedDiff), this.params.turnAngle);
+      }
+      const speed = this.params.speed * this.speedMultiplier;
+      this.vx = Math.cos(this.angle) * speed;
+      this.vy = Math.sin(this.angle) * speed;
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+    } else if (this.type === 'shooter') {
+      this.y += this.vy * dt;
+      this.shotTimer -= dt;
+      if (this.shotTimer <= 0 && gameState.player) {
+        // Shoot at player
+        const dx = gameState.player.x - this.x;
+        const dy = gameState.player.y - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 0) {
+          const bullet = new Bullet(this.x, this.y, dx / dist, dy / dist, 'enemy', bulletSpeed);
+          gameState.bullets.push(bullet);
         }
+        this.shotTimer = this.params.shotInterval;
+      }
+    }
+  }
+
+  hit(damage = 1) {
+    this.hp -= damage;
+    if (this.hp <= 0) {
+      this.destroy();
+      return true;
+    }
+    return false;
+  }
+
+  destroy() {
+    gameState.score += this.params.score;
+
+    // Create explosion particles
+    for (let i = 0; i < 15; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 30 + Math.random() * 80;
+      gameState.particles.push(new Particle(
+        this.x, this.y, this.color, 0.6, 2 + Math.random() * 2,
+        Math.cos(angle) * speed, Math.sin(angle) * speed
+      ));
+    }
+  }
+
+  isOffScreen() {
+    return this.y > GAME_HEIGHT + 50 || this.y < -50 || this.x < -50 || this.x > GAME_WIDTH + 50;
+  }
+
+  draw() {
+    if (this.type === 'basic') {
+      // Circle
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (this.type === 'zigzag') {
+      // Diamond
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.moveTo(this.x, this.y - this.radius);
+      ctx.lineTo(this.x + this.radius, this.y);
+      ctx.lineTo(this.x, this.y + this.radius);
+      ctx.lineTo(this.x - this.radius, this.y);
+      ctx.closePath();
+      ctx.fill();
+    } else if (this.type === 'homing') {
+      // Triangle pointing in movement direction
+      ctx.fillStyle = this.color;
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      ctx.rotate(this.angle);
+      ctx.beginPath();
+      ctx.moveTo(this.radius, 0);
+      ctx.lineTo(-this.radius * 0.6, -this.radius * 0.8);
+      ctx.lineTo(-this.radius * 0.6, this.radius * 0.8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    } else if (this.type === 'shooter') {
+      // Larger circle with inner circle
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius * 0.5, 0, Math.PI * 2);
+      ctx.fill();
     }
 
-    draw() {
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Glow effect
-        ctx.strokeStyle = 'rgba(255, 68, 68, 0.5)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size + 3, 0, Math.PI * 2);
-        ctx.stroke();
-    }
+    // Glow effect
+    ctx.strokeStyle = this.color + '80';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius + 2, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 }
 
 class Bullet {
-    constructor(x, y, targetX, targetY) {
-        this.x = x;
-        this.y = y;
-        this.size = 5;
-        this.color = '#ffff00';
-        this.speed = 400; // pixels per second
-        
-        // Calculate direction
-        const dx = targetX - x;
-        const dy = targetY - y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        this.vx = (dx / distance) * this.speed;
-        this.vy = (dy / distance) * this.speed;
-    }
+  constructor(x, y, dirX, dirY, owner, speed = null) {
+    this.x = x;
+    this.y = y;
+    this.owner = owner; // 'player' or 'enemy'
 
-    update(deltaTime) {
-        this.x += this.vx * deltaTime;
-        this.y += this.vy * deltaTime;
-    }
+    const params = BULLET_PARAMS[owner];
+    this.radius = params.radius;
+    this.color = params.color;
 
-    draw() {
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Trail effect
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = this.color;
-        ctx.fill();
-        ctx.shadowBlur = 0;
+    if (owner === 'player') {
+      this.vx = dirX * Math.abs(params.speedY);
+      this.vy = dirY * Math.abs(params.speedY);
+    } else {
+      const bulletSpeed = speed || 150;
+      this.vx = dirX * bulletSpeed;
+      this.vy = dirY * bulletSpeed;
     }
+  }
 
-    isOffScreen() {
-        return this.x < 0 || this.x > config.canvasWidth ||
-               this.y < 0 || this.y > config.canvasHeight;
-    }
-}
+  update(dt) {
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+  }
 
-// Game functions
-function updatePlayer(deltaTime) {
-    // Movement with WASD or arrow keys
-    if (gameState.keys['w'] || gameState.keys['arrowup']) {
-        gameState.player.y -= config.playerSpeed * deltaTime;
-    }
-    if (gameState.keys['s'] || gameState.keys['arrowdown']) {
-        gameState.player.y += config.playerSpeed * deltaTime;
-    }
-    if (gameState.keys['a'] || gameState.keys['arrowleft']) {
-        gameState.player.x -= config.playerSpeed * deltaTime;
-    }
-    if (gameState.keys['d'] || gameState.keys['arrowright']) {
-        gameState.player.x += config.playerSpeed * deltaTime;
-    }
+  isOffScreen() {
+    return this.x < -10 || this.x > GAME_WIDTH + 10 || this.y < -10 || this.y > GAME_HEIGHT + 10;
+  }
 
-    // Keep player within bounds
-    gameState.player.x = Math.max(gameState.player.size, Math.min(config.canvasWidth - gameState.player.size, gameState.player.x));
-    gameState.player.y = Math.max(gameState.player.size, Math.min(config.canvasHeight - gameState.player.size, gameState.player.y));
-}
+  draw() {
+    // Shadow/trail effect
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = this.color;
 
-function drawPlayer() {
-    ctx.fillStyle = gameState.player.color;
+    ctx.fillStyle = this.color;
     ctx.beginPath();
-    ctx.arc(gameState.player.x, gameState.player.y, gameState.player.size, 0, Math.PI * 2);
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.fill();
-    
-    // Glow effect
-    ctx.strokeStyle = 'rgba(0, 255, 136, 0.7)';
-    ctx.lineWidth = 3;
+
+    ctx.shadowBlur = 0;
+  }
+}
+
+class Particle {
+  constructor(x, y, color, lifetime, size, vx = 0, vy = 0) {
+    this.x = x;
+    this.y = y;
+    this.vx = vx;
+    this.vy = vy;
+    this.color = color;
+    this.lifetime = lifetime;
+    this.maxLifetime = lifetime;
+    this.size = size;
+  }
+
+  update(dt) {
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.lifetime -= dt;
+
+    // Slow down
+    this.vx *= 0.95;
+    this.vy *= 0.95;
+  }
+
+  isDead() {
+    return this.lifetime <= 0;
+  }
+
+  draw() {
+    const alpha = this.lifetime / this.maxLifetime;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = this.color;
     ctx.beginPath();
-    ctx.arc(gameState.player.x, gameState.player.y, gameState.player.size + 5, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+  }
 }
 
-function spawnEnemy(currentTime) {
-    if (currentTime - gameState.lastEnemySpawn > config.enemySpawnRate) {
-        // Spawn from random edge
-        const edge = Math.floor(Math.random() * 4);
-        let x, y;
-        
-        switch (edge) {
-            case 0: // top
-                x = Math.random() * config.canvasWidth;
-                y = 0;
-                break;
-            case 1: // right
-                x = config.canvasWidth;
-                y = Math.random() * config.canvasHeight;
-                break;
-            case 2: // bottom
-                x = Math.random() * config.canvasWidth;
-                y = config.canvasHeight;
-                break;
-            case 3: // left
-                x = 0;
-                y = Math.random() * config.canvasHeight;
-                break;
-        }
-        
-        gameState.enemies.push(new Enemy(x, y));
-        gameState.lastEnemySpawn = currentTime;
+class Star {
+  constructor() {
+    this.x = Math.random() * GAME_WIDTH;
+    this.y = Math.random() * GAME_HEIGHT;
+    this.size = 0.5 + Math.random() * 1.5;
+    this.brightness = Math.random();
+    this.fadeSpeed = 0.5 + Math.random() * 1.5;
+    this.fadeDirection = Math.random() < 0.5 ? 1 : -1;
+  }
+
+  update(dt) {
+    this.brightness += this.fadeDirection * this.fadeSpeed * dt;
+    if (this.brightness >= 1.0) {
+      this.brightness = 1.0;
+      this.fadeDirection = -1;
+    } else if (this.brightness <= 0.0) {
+      this.brightness = 0.0;
+      this.fadeDirection = 1;
     }
+  }
+
+  draw() {
+    ctx.globalAlpha = this.brightness * 0.6;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(this.x, this.y, this.size, this.size);
+    ctx.globalAlpha = 1.0;
+  }
 }
 
-function shoot() {
-    const currentTime = performance.now();
-    if (currentTime - gameState.lastShot > gameState.shootCooldown) {
-        const bullet = new Bullet(
-            gameState.player.x,
-            gameState.player.y,
-            gameState.mouse.x,
-            gameState.mouse.y
-        );
-        gameState.bullets.push(bullet);
-        gameState.lastShot = currentTime;
+// =========================================
+// Input Handling
+// =========================================
+
+document.addEventListener('keydown', (e) => {
+  gameState.keys[e.key.toLowerCase()] = true;
+
+  // Dash on Shift or Space
+  if ((e.key === 'Shift' || e.key === ' ') && gameState.state === 'playing' && gameState.player) {
+    gameState.player.dash();
+    e.preventDefault();
+  }
+
+  // Start game on any key in title screen
+  if (gameState.state === 'title') {
+    startGame();
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  gameState.keys[e.key.toLowerCase()] = false;
+});
+
+// Mouse/Touch input
+canvas.addEventListener('click', () => {
+  if (gameState.state === 'title') {
+    startGame();
+  } else if (gameState.state === 'gameover') {
+    startGame();
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const canvasX = e.clientX - rect.left;
+  const canvasY = e.clientY - rect.top;
+  // Convert to game coordinates
+  gameState.mouse.x = (canvasX - offsetX) / scale;
+  gameState.mouse.y = (canvasY - offsetY) / scale;
+});
+
+// Touch support (basic)
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (gameState.state === 'title') {
+    startGame();
+  } else if (gameState.state === 'gameover') {
+    startGame();
+  }
+}, { passive: false });
+
+// =========================================
+// Game Functions
+// =========================================
+
+function init() {
+  // Create background stars
+  for (let i = 0; i < 100; i++) {
+    gameState.stars.push(new Star());
+  }
+
+  // Show title screen
+  gameState.state = 'title';
+  updateUI();
+}
+
+function startGame() {
+  gameState.state = 'playing';
+  gameState.score = 0;
+  gameState.lives = PLAYER_PARAMS.initialLives;
+  gameState.stageIndex = 0;
+  gameState.elapsedTime = 0;
+  gameState.timeLeft = stageConfigs[0].duration;
+  gameState.spawnAccumulator = 0;
+
+  gameState.player = new Player();
+  gameState.enemies = [];
+  gameState.bullets = [];
+  gameState.particles = [];
+
+  updateUI();
+}
+
+function getCurrentPhase() {
+  const stage = stageConfigs[gameState.stageIndex];
+  const time = gameState.elapsedTime;
+
+  for (const phase of stage.phases) {
+    if (time >= phase.startTime && time < phase.endTime) {
+      return phase;
     }
+  }
+  return stage.phases[stage.phases.length - 1];
+}
+
+function spawnEnemies(dt) {
+  const phase = getCurrentPhase();
+  if (!phase) return;
+
+  gameState.spawnAccumulator += phase.spawnRate * dt;
+
+  while (gameState.spawnAccumulator >= 1 && gameState.enemies.length < phase.maxEnemies) {
+    gameState.spawnAccumulator -= 1;
+
+    // Pick random enemy type from allowed types
+    const type = phase.allowedTypes[Math.floor(Math.random() * phase.allowedTypes.length)];
+
+    // Spawn at random x position, above screen
+    const x = Math.random() * GAME_WIDTH;
+    const y = -20;
+
+    gameState.enemies.push(new Enemy(type, x, y, phase.enemySpeedMultiplier));
+  }
+}
+
+function updateGame(dt) {
+  // Clamp deltaTime to avoid huge jumps
+  dt = Math.min(dt, 0.05);
+
+  // Update timer
+  gameState.elapsedTime += dt;
+  gameState.timeLeft = stageConfigs[gameState.stageIndex].duration - gameState.elapsedTime;
+
+  if (gameState.timeLeft <= 0) {
+    // Stage cleared!
+    // For now, just continue (could add stage progression here)
+    gameState.elapsedTime = 0;
+  }
+
+  // Update player
+  if (gameState.player) {
+    gameState.player.update(dt);
+  }
+
+  // Spawn enemies
+  const phase = getCurrentPhase();
+  spawnEnemies(dt);
+
+  // Update enemies
+  for (let i = gameState.enemies.length - 1; i >= 0; i--) {
+    const enemy = gameState.enemies[i];
+    enemy.update(dt, phase ? phase.bulletSpeed : 150);
+
+    if (enemy.isOffScreen()) {
+      gameState.enemies.splice(i, 1);
+    }
+  }
+
+  // Update bullets
+  for (let i = gameState.bullets.length - 1; i >= 0; i--) {
+    const bullet = gameState.bullets[i];
+    bullet.update(dt);
+
+    if (bullet.isOffScreen()) {
+      gameState.bullets.splice(i, 1);
+    }
+  }
+
+  // Update particles
+  for (let i = gameState.particles.length - 1; i >= 0; i--) {
+    const particle = gameState.particles[i];
+    particle.update(dt);
+
+    if (particle.isDead()) {
+      gameState.particles.splice(i, 1);
+    }
+  }
+
+  // Update stars
+  for (const star of gameState.stars) {
+    star.update(dt);
+  }
+
+  // Check collisions
+  checkCollisions();
+
+  // Update UI
+  updateUI();
 }
 
 function checkCollisions() {
-    // Check bullet-enemy collisions
-    for (let i = gameState.bullets.length - 1; i >= 0; i--) {
-        const bullet = gameState.bullets[i];
-        
-        for (let j = gameState.enemies.length - 1; j >= 0; j--) {
-            const enemy = gameState.enemies[j];
-            const dx = bullet.x - enemy.x;
-            const dy = bullet.y - enemy.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance < bullet.size + enemy.size) {
-                gameState.enemies.splice(j, 1);
-                gameState.bullets.splice(i, 1);
-                gameState.score += 10;
-                scoreElement.textContent = gameState.score;
-                break;
-            }
+  if (!gameState.player) return;
+
+  // Player bullets vs enemies
+  for (let i = gameState.bullets.length - 1; i >= 0; i--) {
+    const bullet = gameState.bullets[i];
+    if (bullet.owner !== 'player') continue;
+
+    for (let j = gameState.enemies.length - 1; j >= 0; j--) {
+      const enemy = gameState.enemies[j];
+      const dx = bullet.x - enemy.x;
+      const dy = bullet.y - enemy.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < bullet.radius + enemy.radius) {
+        gameState.bullets.splice(i, 1);
+        if (enemy.hit(1)) {
+          gameState.enemies.splice(j, 1);
         }
+        break;
+      }
     }
-    
-    // Check player-enemy collisions
+  }
+
+  // Enemy bullets vs player
+  for (let i = gameState.bullets.length - 1; i >= 0; i--) {
+    const bullet = gameState.bullets[i];
+    if (bullet.owner !== 'enemy') continue;
+
+    const dx = bullet.x - gameState.player.x;
+    const dy = bullet.y - gameState.player.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < bullet.radius + gameState.player.hitRadius) {
+      gameState.bullets.splice(i, 1);
+      gameState.player.hit();
+    }
+  }
+
+  // Enemies vs player
+  if (!gameState.player.isInvincible()) {
     for (const enemy of gameState.enemies) {
-        const dx = gameState.player.x - enemy.x;
-        const dy = gameState.player.y - enemy.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        if (distance < gameState.player.size + enemy.size) {
-            // Game over logic could be added here
-            // For now, just reset score
-            gameState.score = Math.max(0, gameState.score - 50);
-            scoreElement.textContent = gameState.score;
-        }
+      const dx = enemy.x - gameState.player.x;
+      const dy = enemy.y - gameState.player.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < enemy.radius + gameState.player.hitRadius) {
+        gameState.player.hit();
+        break; // Only one hit per frame
+      }
     }
+  }
 }
 
-// Game loop with fixed timestep
+function render() {
+  // Clear with gradient background
+  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  gradient.addColorStop(0, '#000428');
+  gradient.addColorStop(1, '#000000');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Apply game coordinate transform
+  ctx.save();
+  ctx.translate(offsetX, offsetY);
+  ctx.scale(scale, scale);
+
+  // Draw stars
+  for (const star of gameState.stars) {
+    star.draw();
+  }
+
+  // Draw particles (background layer)
+  for (const particle of gameState.particles) {
+    particle.draw();
+  }
+
+  // Draw bullets
+  for (const bullet of gameState.bullets) {
+    bullet.draw();
+  }
+
+  // Draw enemies
+  for (const enemy of gameState.enemies) {
+    enemy.draw();
+  }
+
+  // Draw player
+  if (gameState.player) {
+    gameState.player.draw();
+  }
+
+  ctx.restore();
+
+  // Draw UI overlays (in screen coordinates, not game coordinates)
+  if (gameState.state === 'title') {
+    drawTitleScreen();
+  } else if (gameState.state === 'gameover') {
+    drawGameOverScreen();
+  }
+}
+
+function drawTitleScreen() {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#40E0FF';
+  ctx.font = 'bold 48px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Orbit-Bloom', canvas.width / 2, canvas.height / 2 - 40);
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = '24px sans-serif';
+  ctx.fillText('Click or Press Any Key to Start', canvas.width / 2, canvas.height / 2 + 40);
+
+  ctx.font = '16px sans-serif';
+  ctx.fillStyle = '#AAAAAA';
+  ctx.fillText('WASD/Arrow Keys: Move | Shift/Space: Dash', canvas.width / 2, canvas.height / 2 + 100);
+}
+
+function drawGameOverScreen() {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#FF5A5A';
+  ctx.font = 'bold 48px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 60);
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = '32px sans-serif';
+  ctx.fillText(`Score: ${gameState.score}`, canvas.width / 2, canvas.height / 2);
+
+  ctx.font = '24px sans-serif';
+  ctx.fillText('Click or Press Any Key to Retry', canvas.width / 2, canvas.height / 2 + 60);
+}
+
+function updateUI() {
+  document.getElementById('score').textContent = gameState.score;
+  document.getElementById('lives').textContent = gameState.lives;
+  document.getElementById('time').textContent = Math.ceil(Math.max(0, gameState.timeLeft));
+
+  // Show/hide UI based on game state
+  const gameInfo = document.getElementById('gameInfo');
+  if (gameState.state === 'playing') {
+    gameInfo.style.display = 'block';
+  } else {
+    gameInfo.style.display = 'none';
+  }
+}
+
+// =========================================
+// Game Loop
+// =========================================
+
 let lastTime = performance.now();
-let fpsCounter = 0;
-let fpsTime = 0;
 
 function gameLoop(currentTime) {
-    // Calculate deltaTime in seconds
-    const deltaTime = (currentTime - lastTime) / 1000;
-    lastTime = currentTime;
-    
-    // FPS counter
-    fpsCounter++;
-    fpsTime += deltaTime;
-    if (fpsTime >= 1) {
-        fpsElement.textContent = fpsCounter;
-        fpsCounter = 0;
-        fpsTime = 0;
-    }
-    
-    // Update
-    updatePlayer(deltaTime);
-    spawnEnemy(currentTime);
-    
-    // Update enemies
-    for (let i = gameState.enemies.length - 1; i >= 0; i--) {
-        gameState.enemies[i].update(deltaTime);
-    }
-    
-    // Update bullets
-    for (let i = gameState.bullets.length - 1; i >= 0; i--) {
-        gameState.bullets[i].update(deltaTime);
-        if (gameState.bullets[i].isOffScreen()) {
-            gameState.bullets.splice(i, 1);
-        }
-    }
-    
-    checkCollisions();
-    
-    // Draw
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, config.canvasWidth, config.canvasHeight);
-    
-    // Draw starfield background
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-    for (let i = 0; i < 50; i++) {
-        const x = (i * 123) % config.canvasWidth;
-        const y = (i * 456) % config.canvasHeight;
-        ctx.fillRect(x, y, 2, 2);
-    }
-    
-    drawPlayer();
-    
-    gameState.enemies.forEach(enemy => enemy.draw());
-    gameState.bullets.forEach(bullet => bullet.draw());
-    
-    // Continue loop
-    requestAnimationFrame(gameLoop);
+  const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
+  lastTime = currentTime;
+
+  if (gameState.state === 'playing') {
+    updateGame(deltaTime);
+  }
+
+  render();
+
+  requestAnimationFrame(gameLoop);
 }
 
-// Start the game
+// =========================================
+// Initialize and Start
+// =========================================
+
+init();
 requestAnimationFrame(gameLoop);
