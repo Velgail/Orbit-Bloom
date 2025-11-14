@@ -8,13 +8,23 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <canvas id="gameCanvas"></canvas>
-        <div id="gameInfo">
-            <p>Score: <span id="score">0</span></p>
-            <p>FPS: <span id="fps">60</span></p>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="gameInfo">
+        <div id="topLeft">
+            <div class="ui-label">SCORE</div>
+            <div class="ui-value" id="score">0</div>
+        </div>
+        <div id="topCenter">
+            <div class="ui-label">TIME</div>
+            <div class="ui-value" id="time">60</div>
+        </div>
+        <div id="topRight">
+            <div class="ui-label">LIVES</div>
+            <div class="ui-value" id="lives">3</div>
         </div>
     </div>
+
     <script src="main.js"></script>
 </body>
 </html>
