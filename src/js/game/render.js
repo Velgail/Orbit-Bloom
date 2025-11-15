@@ -42,14 +42,19 @@ function drawGameOverScreen(ctx, canvas) {
   ctx.font = 'bold 48px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 60);
+  ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 80);
 
   ctx.fillStyle = '#FFFFFF';
   ctx.font = '32px sans-serif';
-  ctx.fillText(`Score: ${gameState.score}`, canvas.width / 2, canvas.height / 2);
+  ctx.fillText(`Score: ${gameState.score}`, canvas.width / 2, canvas.height / 2 - 20);
 
+  ctx.fillStyle = '#40E0FF';
+  ctx.font = '28px sans-serif';
+  ctx.fillText(`Reached Wave ${gameState.stageIndex + 1}`, canvas.width / 2, canvas.height / 2 + 20);
+
+  ctx.fillStyle = '#FFFFFF';
   ctx.font = '24px sans-serif';
-  ctx.fillText('Click or Press Any Key to Retry', canvas.width / 2, canvas.height / 2 + 60);
+  ctx.fillText('Click or Press Any Key to Retry', canvas.width / 2, canvas.height / 2 + 70);
 }
 
 /**
@@ -80,7 +85,9 @@ function drawPowerUpNotification(ctx, canvas) {
   ctx.font = `bold ${Math.round(56 * scale)}px sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const text = 'POWER UP!';
+
+  // Show "Wave X" message if just advanced a wave, otherwise "Power Up!"
+  const text = gameState.powerLevel > 0 && gameState.powerUpTimer > 1.5 ? `WAVE ${gameState.stageIndex + 1}` : 'POWER UP!';
   ctx.strokeText(text, canvas.width / 2, canvas.height / 2 - 40);
   ctx.fillText(text, canvas.width / 2, canvas.height / 2 - 40);
 
