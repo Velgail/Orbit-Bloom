@@ -10,7 +10,11 @@ import { gameState } from './state.js';
 export function updateUI() {
   document.getElementById('score').textContent = gameState.score;
   document.getElementById('lives').textContent = gameState.lives;
-  document.getElementById('time').textContent = Math.ceil(Math.max(0, gameState.timeLeft));
+
+  // Display Wave number and time remaining
+  const waveNumber = gameState.stageIndex + 1;
+  const timeLeft = Math.ceil(Math.max(0, gameState.timeLeft));
+  document.getElementById('time').textContent = `W${waveNumber} ${timeLeft}s`;
 
   // Show/hide UI based on game state
   const gameInfo = document.getElementById('gameInfo');

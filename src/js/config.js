@@ -38,8 +38,9 @@ export const BULLET_PARAMS = {
   enemy: { radius: 3, color: '#FF5A5A' },
 };
 
-// Stage Configuration
+// Stage Configuration (Waves)
 export const stageConfigs = [
+  // Wave 1 - Beginner Friendly
   {
     duration: 60,
     phases: [
@@ -69,6 +70,105 @@ export const stageConfigs = [
         allowedTypes: ['basic', 'zigzag', 'wave', 'shooter', 'shooter_radial'],
         enemySpeedMultiplier: 1.0,
         bulletSpeed: 140,
+      },
+    ],
+  },
+  // Wave 2 - Moderate Challenge
+  {
+    duration: 60,
+    phases: [
+      {
+        startTime: 0,
+        endTime: 20,
+        spawnRate: 0.5,
+        maxEnemies: 8,
+        allowedTypes: ['basic', 'zigzag'],
+        enemySpeedMultiplier: 1.0,
+        bulletSpeed: 130,
+      },
+      {
+        startTime: 20,
+        endTime: 40,
+        spawnRate: 0.7,
+        maxEnemies: 12,
+        allowedTypes: ['basic', 'zigzag', 'wave', 'shooter'],
+        enemySpeedMultiplier: 1.1,
+        bulletSpeed: 150,
+      },
+      {
+        startTime: 40,
+        endTime: 60,
+        spawnRate: 0.9,
+        maxEnemies: 15,
+        allowedTypes: ['basic', 'zigzag', 'wave', 'shooter', 'shooter_radial', 'shooter_spread'],
+        enemySpeedMultiplier: 1.2,
+        bulletSpeed: 160,
+      },
+    ],
+  },
+  // Wave 3 - Challenging
+  {
+    duration: 60,
+    phases: [
+      {
+        startTime: 0,
+        endTime: 20,
+        spawnRate: 0.7,
+        maxEnemies: 12,
+        allowedTypes: ['basic', 'zigzag', 'wave'],
+        enemySpeedMultiplier: 1.1,
+        bulletSpeed: 150,
+      },
+      {
+        startTime: 20,
+        endTime: 40,
+        spawnRate: 1.0,
+        maxEnemies: 16,
+        allowedTypes: ['basic', 'zigzag', 'wave', 'spiral', 'shooter', 'shooter_spread'],
+        enemySpeedMultiplier: 1.2,
+        bulletSpeed: 170,
+      },
+      {
+        startTime: 40,
+        endTime: 60,
+        spawnRate: 1.2,
+        maxEnemies: 20,
+        allowedTypes: ['zigzag', 'wave', 'spiral', 'shooter', 'shooter_radial', 'shooter_spread', 'shooter_spiral'],
+        enemySpeedMultiplier: 1.3,
+        bulletSpeed: 180,
+      },
+    ],
+  },
+  // Wave 4+ - Maximum Difficulty (repeats with power scaling)
+  {
+    duration: 60,
+    phases: [
+      {
+        startTime: 0,
+        endTime: 20,
+        spawnRate: 1.0,
+        maxEnemies: 15,
+        allowedTypes: ['basic', 'zigzag', 'wave', 'spiral'],
+        enemySpeedMultiplier: 1.2,
+        bulletSpeed: 170,
+      },
+      {
+        startTime: 20,
+        endTime: 40,
+        spawnRate: 1.3,
+        maxEnemies: 20,
+        allowedTypes: ['zigzag', 'wave', 'spiral', 'homing', 'shooter', 'shooter_spread'],
+        enemySpeedMultiplier: 1.3,
+        bulletSpeed: 190,
+      },
+      {
+        startTime: 40,
+        endTime: 60,
+        spawnRate: 1.5,
+        maxEnemies: 25,
+        allowedTypes: ['wave', 'spiral', 'homing', 'shooter', 'shooter_radial', 'shooter_spread', 'shooter_spiral'],
+        enemySpeedMultiplier: 1.4,
+        bulletSpeed: 200,
       },
     ],
   },

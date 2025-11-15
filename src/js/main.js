@@ -57,9 +57,15 @@ function updateGame(dt) {
   gameState.timeLeft = stageConfigs[gameState.stageIndex].duration - gameState.elapsedTime;
 
   if (gameState.timeLeft <= 0) {
-    // Stage cleared! Trigger power-up
+    // Wave cleared! Trigger power-up and advance to next wave
     triggerPowerUp();
     gameState.elapsedTime = 0;
+
+    // Progress to next wave (cap at last wave which repeats infinitely)
+    if (gameState.stageIndex < stageConfigs.length - 1) {
+      gameState.stageIndex++;
+    }
+    // If at max wave, stay there and rely on power scaling for difficulty
   }
 
   // Update power-up timer
