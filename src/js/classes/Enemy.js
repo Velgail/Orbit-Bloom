@@ -38,11 +38,20 @@ export class Enemy {
       this.vy = this.params.speedY * speedMultiplier;
       this.vx = 0;
       this.startX = x;
+    } else if (type === 'wave') {
+      this.vy = this.params.speedY * speedMultiplier;
+      this.vx = 0;
+      this.startX = x;
+    } else if (type === 'spiral') {
+      this.vy = this.params.speedY * speedMultiplier;
+      this.vx = 0;
+      this.startX = x;
+      this.startY = y;
     } else if (type === 'homing') {
       const speed = this.params.speed * speedMultiplier;
       this.vx = 0;
       this.vy = speed;
-    } else if (type === 'shooter') {
+    } else if (type === 'shooter' || type === 'shooter_spread' || type === 'shooter_burst') {
       this.vy = this.params.speedY * speedMultiplier;
       this.vx = 0;
     }
@@ -56,6 +65,17 @@ export class Enemy {
     } else if (this.type === 'zigzag') {
       this.y += this.vy * dt;
       this.x = this.startX + Math.sin(this.time * this.params.freq) * this.params.ampX;
+    } else if (this.type === 'wave') {
+      // Smooth wave pattern (sine wave with cosine velocity for smooth transitions)
+      this.y += this.vy * dt;
+      const wavePhase = this.time * this.params.freq;
+      this.x = this.startX + Math.sin(wavePhase) * this.params.ampX;
+    } else if (this.type === 'spiral') {
+      // Spiral pattern (circular motion while descending)
+      this.y += this.vy * dt;
+      const spiralPhase = this.time * this.params.freq;
+      const radius = (this.y - this.startY) * 0.2; // Spiral radius increases with descent
+      this.x = this.startX + Math.cos(spiralPhase) * Math.min(radius, this.params.spiralSpeed);
     } else if (this.type === 'homing') {
       this.turnTimer += dt;
       if (this.turnTimer >= this.params.turnInterval) {
@@ -86,6 +106,44 @@ export class Enemy {
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist > 0) {
           const bullet = new Bullet(this.x, this.y, dx / dist, dy / dist, 'enemy', bulletSpeed);
+          this.gameState.bullets.push(bullet);
+        }
+        this.shotTimer = this.params.shotInterval;
+      }
+    } else if (this.type === 'shooter_spread') {
+      this.y += this.vy * dt;
+      this.shotTimer -= dt;
+      if (this.shotTimer <= 0 && this.gameState.player) {
+        // Shoot 3-way spread at player
+        const dx = this.gameState.player.x - this.x;
+        const dy = this.gameState.player.y - this.y;
+        const baseAngle = Math.atan2(dy, dx);
+        const spreadAngles = [-0.3, 0, 0.3]; // -17°, 0°, +17° in radians
+
+        for (const angleOffset of spreadAngles) {
+          const angle = baseAngle + angleOffset;
+          const bullet = new Bullet(
+            this.x, this.y,
+            Math.cos(angle), Math.sin(angle),
+            'enemy', bulletSpeed
+          );
+          this.gameState.bullets.push(bullet);
+        }
+        this.shotTimer = this.params.shotInterval;
+      }
+    } else if (this.type === 'shooter_burst') {
+      this.y += this.vy * dt;
+      this.shotTimer -= dt;
+      if (this.shotTimer <= 0) {
+        // Shoot 8-way circular burst
+        const numBullets = 8;
+        for (let i = 0; i < numBullets; i++) {
+          const angle = (Math.PI * 2 * i) / numBullets;
+          const bullet = new Bullet(
+            this.x, this.y,
+            Math.cos(angle), Math.sin(angle),
+            'enemy', bulletSpeed
+          );
           this.gameState.bullets.push(bullet);
         }
         this.shotTimer = this.params.shotInterval;
@@ -137,6 +195,30 @@ export class Enemy {
       ctx.lineTo(this.x - this.radius, this.y);
       ctx.closePath();
       ctx.fill();
+    } else if (this.type === 'wave') {
+      // Rounded diamond (softer edges)
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.moveTo(this.x, this.y - this.radius);
+      ctx.quadraticCurveTo(this.x + this.radius * 0.7, this.y - this.radius * 0.3, this.x + this.radius, this.y);
+      ctx.quadraticCurveTo(this.x + this.radius * 0.7, this.y + this.radius * 0.3, this.x, this.y + this.radius);
+      ctx.quadraticCurveTo(this.x - this.radius * 0.7, this.y + this.radius * 0.3, this.x - this.radius, this.y);
+      ctx.quadraticCurveTo(this.x - this.radius * 0.7, this.y - this.radius * 0.3, this.x, this.y - this.radius);
+      ctx.fill();
+    } else if (this.type === 'spiral') {
+      // Star shape (5-pointed)
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const angle = (Math.PI * 2 * i) / 10 - Math.PI / 2;
+        const radius = i % 2 === 0 ? this.radius : this.radius * 0.5;
+        const x = this.x + Math.cos(angle) * radius;
+        const y = this.y + Math.sin(angle) * radius;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
     } else if (this.type === 'homing') {
       // Triangle pointing in movement direction
       ctx.fillStyle = this.color;
@@ -155,6 +237,41 @@ export class Enemy {
       ctx.fillStyle = this.color;
       ctx.beginPath();
       ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (this.type === 'shooter_spread') {
+      // Pentagon with inner circle
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const angle = (Math.PI * 2 * i) / 5 - Math.PI / 2;
+        const x = this.x + Math.cos(angle) * this.radius;
+        const y = this.y + Math.sin(angle) * this.radius;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (this.type === 'shooter_burst') {
+      // Octagon with pulsing effect
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      const pulseRadius = this.radius + Math.sin(this.time * 3) * 2;
+      for (let i = 0; i < 8; i++) {
+        const angle = (Math.PI * 2 * i) / 8;
+        const x = this.x + Math.cos(angle) * pulseRadius;
+        const y = this.y + Math.sin(angle) * pulseRadius;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
       ctx.fill();
       ctx.fillStyle = '#FFFFFF';
       ctx.beginPath();
