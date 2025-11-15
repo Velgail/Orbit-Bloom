@@ -29,6 +29,7 @@ export class Enemy {
     this.shotTimer = this.params.shotInterval || 0;
     this.turnTimer = 0;
     this.angle = Math.PI / 2; // Start moving down
+    this.spiralAngle = 0; // For spiral bullet pattern
 
     // Initial velocity
     if (type === 'basic') {
@@ -51,7 +52,7 @@ export class Enemy {
       const speed = this.params.speed * speedMultiplier;
       this.vx = 0;
       this.vy = speed;
-    } else if (type === 'shooter' || type === 'shooter_spread' || type === 'shooter_burst') {
+    } else if (type === 'shooter' || type === 'shooter_spread' || type === 'shooter_radial' || type === 'shooter_spiral') {
       this.vy = this.params.speedY * speedMultiplier;
       this.vx = 0;
     }
@@ -131,21 +132,42 @@ export class Enemy {
         }
         this.shotTimer = this.params.shotInterval;
       }
-    } else if (this.type === 'shooter_burst') {
+    } else if (this.type === 'shooter_radial') {
       this.y += this.vy * dt;
       this.shotTimer -= dt;
       if (this.shotTimer <= 0) {
-        // Shoot 8-way circular burst
-        const numBullets = 8;
+        // Shoot beautiful 6-way radial pattern
+        const numBullets = 6;
         for (let i = 0; i < numBullets; i++) {
-          const angle = (Math.PI * 2 * i) / numBullets;
+          const angle = (Math.PI * 2 * i) / numBullets + this.time * 0.5; // Slowly rotating pattern
           const bullet = new Bullet(
             this.x, this.y,
             Math.cos(angle), Math.sin(angle),
-            'enemy', bulletSpeed
+            'enemy', bulletSpeed * 0.8 // Slower bullets for aesthetic
           );
           this.gameState.bullets.push(bullet);
         }
+        this.shotTimer = this.params.shotInterval;
+      }
+    } else if (this.type === 'shooter_spiral') {
+      this.y += this.vy * dt;
+      this.shotTimer -= dt;
+      if (this.shotTimer <= 0) {
+        // Continuous spiral pattern (2 bullets per shot, opposite directions)
+        const bullet1 = new Bullet(
+          this.x, this.y,
+          Math.cos(this.spiralAngle), Math.sin(this.spiralAngle),
+          'enemy', bulletSpeed * 0.7 // Even slower for aesthetic spiral
+        );
+        const bullet2 = new Bullet(
+          this.x, this.y,
+          Math.cos(this.spiralAngle + Math.PI), Math.sin(this.spiralAngle + Math.PI),
+          'enemy', bulletSpeed * 0.7
+        );
+        this.gameState.bullets.push(bullet1);
+        this.gameState.bullets.push(bullet2);
+
+        this.spiralAngle += Math.PI / 8; // 22.5 degrees per shot
         this.shotTimer = this.params.shotInterval;
       }
     }
@@ -259,24 +281,49 @@ export class Enemy {
       ctx.beginPath();
       ctx.arc(this.x, this.y, this.radius * 0.4, 0, Math.PI * 2);
       ctx.fill();
-    } else if (this.type === 'shooter_burst') {
-      // Octagon with pulsing effect
+    } else if (this.type === 'shooter_radial') {
+      // Hexagon (6-sided) with rotating inner pattern
       ctx.fillStyle = this.color;
       ctx.beginPath();
-      const pulseRadius = this.radius + Math.sin(this.time * 3) * 2;
-      for (let i = 0; i < 8; i++) {
-        const angle = (Math.PI * 2 * i) / 8;
-        const x = this.x + Math.cos(angle) * pulseRadius;
-        const y = this.y + Math.sin(angle) * pulseRadius;
+      for (let i = 0; i < 6; i++) {
+        const angle = (Math.PI * 2 * i) / 6 - Math.PI / 2;
+        const x = this.x + Math.cos(angle) * this.radius;
+        const y = this.y + Math.sin(angle) * this.radius;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
       ctx.closePath();
       ctx.fill();
+
+      // Rotating inner triangle
       ctx.fillStyle = '#FFFFFF';
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      ctx.rotate(this.time * 2);
       ctx.beginPath();
-      ctx.arc(this.x, this.y, this.radius * 0.5, 0, Math.PI * 2);
+      for (let i = 0; i < 3; i++) {
+        const angle = (Math.PI * 2 * i) / 3;
+        const x = Math.cos(angle) * this.radius * 0.5;
+        const y = Math.sin(angle) * this.radius * 0.5;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
       ctx.fill();
+      ctx.restore();
+    } else if (this.type === 'shooter_spiral') {
+      // Square with rotating inner square
+      ctx.fillStyle = this.color;
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      ctx.rotate(this.time);
+      ctx.fillRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
+
+      // Inner rotating square
+      ctx.fillStyle = '#FFFFFF';
+      ctx.rotate(this.time * -2);
+      ctx.fillRect(-this.radius * 0.5, -this.radius * 0.5, this.radius, this.radius);
+      ctx.restore();
     }
 
     // Glow effect
