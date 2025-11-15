@@ -5,6 +5,7 @@
 import { GAME_WIDTH, GAME_HEIGHT, ENEMY_PARAMS } from '../config.js';
 import { Bullet } from './Bullet.js';
 import { Particle } from './Particle.js';
+import { getEnemyPowerMultipliers } from '../game/power.js';
 
 export class Enemy {
   constructor(type, x, y, speedMultiplier = 1.0, gameState) {
@@ -14,9 +15,14 @@ export class Enemy {
     this.y = y;
     this.params = ENEMY_PARAMS[type];
     this.radius = this.params.radius;
-    this.hp = this.params.hp;
+
+    // Apply power multiplier to HP
+    const powerMult = getEnemyPowerMultipliers();
+    this.hp = Math.round(this.params.hp * powerMult.hp);
     this.color = this.params.color;
-    this.speedMultiplier = speedMultiplier;
+
+    // Combine phase speed multiplier with power multiplier
+    this.speedMultiplier = speedMultiplier * powerMult.speed;
 
     // Type-specific properties
     this.time = 0;

@@ -3,6 +3,12 @@
 // =========================================
 
 import { gameState, startGame } from './state.js';
+import {
+  initTouchControls,
+  handleTouchStart,
+  handleTouchMove,
+  handleTouchEnd
+} from './touch.js';
 
 /**
  * Initialize input event listeners
@@ -51,13 +57,37 @@ export function initInputHandlers(canvas, getScaleAndOffset) {
     gameState.mouse.y = (canvasY - offsetY) / scale;
   });
 
-  // Touch support (basic)
+  // Initialize touch controls
+  initTouchControls(canvas);
+
+  // Touch support
   canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
     if (gameState.state === 'title') {
+      e.preventDefault();
       startGame();
     } else if (gameState.state === 'gameover') {
+      e.preventDefault();
       startGame();
+    } else if (gameState.state === 'playing') {
+      handleTouchStart(e, canvas);
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', (e) => {
+    if (gameState.state === 'playing') {
+      handleTouchMove(e, canvas);
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', (e) => {
+    if (gameState.state === 'playing') {
+      handleTouchEnd(e);
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchcancel', (e) => {
+    if (gameState.state === 'playing') {
+      handleTouchEnd(e);
     }
   }, { passive: false });
 }

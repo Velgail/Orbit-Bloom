@@ -14,6 +14,8 @@ export const gameState = {
   elapsedTime: 0,
   lives: PLAYER_PARAMS.initialLives,
   stageIndex: 0,
+  powerLevel: 0, // Progressive difficulty level (increments every 60s)
+  powerUpTimer: 0, // Timer for power-up animation
   player: null,
   enemies: [],
   bullets: [],
@@ -23,6 +25,7 @@ export const gameState = {
   keys: {},
   mouse: { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 },
   touch: null,
+  touchMove: { x: 0, y: 0 }, // Touch joystick input (-1 to 1 for x and y)
 };
 
 /**
@@ -49,6 +52,8 @@ export function startGame() {
   gameState.elapsedTime = 0;
   gameState.timeLeft = stageConfigs[0].duration;
   gameState.spawnAccumulator = 0;
+  gameState.powerLevel = 0;
+  gameState.powerUpTimer = 0;
 
   gameState.player = new Player(gameState);
   gameState.enemies = [];

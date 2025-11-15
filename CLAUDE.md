@@ -16,24 +16,26 @@ This document provides comprehensive guidance for AI assistants working with the
 
 ```
 Orbit-Bloom/
-├── index.html          # Main HTML entry point
-├── style.css           # Styling and layout (~49 lines)
-├── js/                 # Modular JavaScript files (ES6 modules)
-│   ├── config.js       # Configuration constants and parameters
-│   ├── main.js         # Entry point and game loop
-│   ├── classes/        # Entity class definitions
-│   │   ├── Player.js   # Player class with movement, shooting, dash
-│   │   ├── Enemy.js    # Enemy class with multiple types
-│   │   ├── Bullet.js   # Bullet class for player and enemy bullets
-│   │   ├── Particle.js # Particle effects
-│   │   └── Star.js     # Background stars
-│   └── game/           # Game logic modules
-│       ├── state.js    # Game state management
-│       ├── input.js    # Input handling (keyboard, mouse, touch)
-│       ├── collision.js # Collision detection
-│       ├── spawn.js    # Enemy spawning logic
-│       ├── ui.js       # UI updates
-│       └── render.js   # Rendering pipeline
+├── src/                # Source code directory
+│   ├── index.html      # Main HTML entry point
+│   ├── style.css       # Styling and layout (~49 lines)
+│   └── js/             # Modular JavaScript files (ES6 modules)
+│       ├── config.js   # Configuration constants and parameters
+│       ├── main.js     # Entry point and game loop
+│       ├── classes/    # Entity class definitions
+│       │   ├── Player.js   # Player class with movement, shooting, dash
+│       │   ├── Enemy.js    # Enemy class with multiple types
+│       │   ├── Bullet.js   # Bullet class for player and enemy bullets
+│       │   ├── Particle.js # Particle effects
+│       │   └── Star.js     # Background stars
+│       └── game/       # Game logic modules
+│           ├── state.js    # Game state management
+│           ├── input.js    # Input handling (keyboard, mouse, touch)
+│           ├── touch.js    # Touch controls for mobile devices
+│           ├── collision.js # Collision detection
+│           ├── spawn.js    # Enemy spawning logic
+│           ├── ui.js       # UI updates
+│           └── render.js   # Rendering pipeline
 ├── LICENSE             # Boost Software License 1.0
 ├── README.md           # Project README (Japanese)
 ├── docs/
@@ -43,12 +45,13 @@ Orbit-Bloom/
 
 ### File Purposes
 
-- **index.html**: Minimal HTML structure with canvas element and game info display
-- **style.css**: Simple styling with dark gradient background and centered layout
-- **js/config.js**: All configuration constants (PLAYER_PARAMS, ENEMY_PARAMS, etc.)
-- **js/main.js**: Entry point, canvas setup, game loop, and update logic
-- **js/classes/***: Individual class files following Single Responsibility Principle
-- **js/game/***: Game logic modules organized by functionality
+- **src/index.html**: Minimal HTML structure with canvas element and game info display
+- **src/style.css**: Simple styling with dark gradient background and centered layout
+- **src/js/config.js**: All configuration constants (PLAYER_PARAMS, ENEMY_PARAMS, etc.)
+- **src/js/main.js**: Entry point, canvas setup, game loop, and update logic
+- **src/js/classes/***: Individual class files following Single Responsibility Principle
+- **src/js/game/***: Game logic modules organized by functionality
+- **src/js/game/touch.js**: Touch control system for mobile devices (virtual joystick and dash button)
 - **docs/spec-orbit-bloom.md**: Detailed technical specification and implementation guide
 
 ## Technology Stack
@@ -182,9 +185,24 @@ Central state management object and functions:
 #### Input Handling (js/game/input.js)
 - **Keyboard**: WASD or arrow keys for movement, Shift/Space for dash
 - **Mouse**: Track position for aiming
-- **Touch**: Basic touch support for mobile
-- **Pattern**: Event listeners update `gameState.keys` and `gameState.mouse`
+- **Touch**: Full touch control support for mobile devices
+- **Pattern**: Event listeners update `gameState.keys`, `gameState.mouse`, and `gameState.touchMove`
 - **Function**: `initInputHandlers(canvas, getScaleAndOffset)` sets up all input listeners
+
+#### Touch Controls (js/game/touch.js)
+- **Virtual Joystick**: Bottom-left circular touch area for movement
+  - Appears when touched, shows direction and distance
+  - Normalized output (-1 to 1) for x and y directions
+  - Maximum displacement clamped for consistent control
+- **Dash Button**: Bottom-right circular button
+  - Visual feedback with cooldown indicator
+  - Triggers player dash ability
+- **Auto-detection**: Automatically enables on touch-capable devices with screens ≤768px
+- **Functions**:
+  - `shouldUseTouchControls()`: Detects if touch controls should be used
+  - `initTouchControls(canvas)`: Initializes touch control positions
+  - `updateTouchControls(dt)`: Updates touch state and applies to gameState
+  - `drawTouchControls(ctx, canvas)`: Renders virtual controls overlay
 
 #### Player Movement (js/classes/Player.js)
 - Immediate response (no inertia)
@@ -471,9 +489,9 @@ Reference `docs/spec-orbit-bloom.md` for planned features.
 - ✅ Life system with invincibility frames
 - ✅ Auto-fire shooting
 - ✅ Modular code architecture
+- ✅ Mobile touch controls (virtual joystick and dash button)
 
 **Planned / Not Yet Implemented**:
-- ⏳ Advanced mobile touch controls (basic support exists)
 - ⏳ Multiple stages (infrastructure exists, only stage 1 implemented)
 - ⏳ Sound effects and music
 - ⏳ High score persistence
@@ -549,9 +567,14 @@ The game is deployed as a static site on GitHub Pages.
 
 **Deployment Process**:
 1. Push changes to main branch
-2. GitHub Pages automatically serves from root
+2. GitHub Pages serves from root, redirects to src/
 3. No build step required
 4. Access at: `https://velgail.github.io/Orbit-Bloom/`
+
+**Project Structure**:
+- Game files are in `src/` directory
+- Root `index.html` redirects to `src/index.html`
+- This separates source code from documentation files
 
 **Important**: All paths must be relative for GitHub Pages to work correctly.
 
@@ -715,16 +738,22 @@ main.js (imports from all modules)
 
 ## Version Information
 
-- **Current State**: Feature-complete implementation following spec v1
-- **Architecture**: Modular ES6 modules (refactored 2025-11-15)
+- **Current State**: Feature-complete implementation with mobile support
+- **Architecture**: Modular ES6 modules in src/ directory
 - **Spec Version**: Draft v1 (see docs/spec-orbit-bloom.md)
 - **Last Updated**: 2025-11-15
 
 **Major Changes**:
-- Refactored from monolithic main.js (~900 lines) to modular architecture
-- Separated code into js/config.js, js/classes/*, and js/game/*
-- Implemented all Phase 1 and Phase 2 features from spec
-- Added comprehensive task management guidelines
+- 2025-11-15 (latest):
+  - Reorganized project structure (moved code to src/ directory)
+  - Implemented full mobile touch controls (virtual joystick + dash button)
+  - Added js/game/touch.js module for touch control system
+  - Auto-detection for mobile devices (touch + screen size ≤768px)
+- 2025-11-15 (initial):
+  - Refactored from monolithic main.js (~900 lines) to modular architecture
+  - Separated code into js/config.js, js/classes/*, and js/game/*
+  - Implemented all Phase 1 and Phase 2 features from spec
+  - Added comprehensive task management guidelines
 
 ## Questions to Ask Before Making Changes
 
