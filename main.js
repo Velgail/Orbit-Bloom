@@ -40,7 +40,7 @@ const stageConfigs = [
     phases: [
       {
         startTime: 0,
-        endTime: 20,
+        endTime: 10,
         spawnRate: 0.5,
         maxEnemies: 10,
         allowedTypes: ['basic'],
@@ -48,8 +48,8 @@ const stageConfigs = [
         bulletSpeed: 160,
       },
       {
-        startTime: 20,
-        endTime: 40,
+        startTime: 10,
+        endTime: 30,
         spawnRate: 0.8,
         maxEnemies: 15,
         allowedTypes: ['basic', 'zigzag'],
@@ -57,7 +57,7 @@ const stageConfigs = [
         bulletSpeed: 180,
       },
       {
-        startTime: 40,
+        startTime: 30,
         endTime: 60,
         spawnRate: 1.0,
         maxEnemies: 20,
@@ -74,7 +74,7 @@ const stageConfigs = [
 // =========================================
 
 const gameState = {
-  state: 'title', // 'title', 'playing', 'gameover'
+  state: 'title', // 'title', 'playing', 'stageclear', 'gameover'
   score: 0,
   timeLeft: 0,
   elapsedTime: 0,
@@ -88,7 +88,16 @@ const gameState = {
   spawnAccumulator: 0,
   keys: {},
   mouse: { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 },
-  touch: null,
+  touch: {
+    active: false,
+    startX: 0,
+    startY: 0,
+    currentX: 0,
+    currentY: 0,
+    startTime: 0,
+    targetX: GAME_WIDTH / 2,
+    targetY: GAME_HEIGHT - 80,
+  },
 };
 
 // =========================================
@@ -149,27 +158,40 @@ class Player {
     let moveX = 0;
     let moveY = 0;
 
-    if (gameState.keys['w'] || gameState.keys['arrowup']) moveY -= 1;
-    if (gameState.keys['s'] || gameState.keys['arrowdown']) moveY += 1;
-    if (gameState.keys['a'] || gameState.keys['arrowleft']) moveX -= 1;
-    if (gameState.keys['d'] || gameState.keys['arrowright']) moveX += 1;
+    // Check if touch control is active
+    if (gameState.touch.active) {
+      // Touch control: interpolate to target position
+      const TOUCH_FOLLOW_RATE = 0.25; // Follow rate (0.2-0.3 as per spec)
+      const dx = gameState.touch.targetX - this.x;
+      const dy = gameState.touch.targetY - this.y;
 
-    // Normalize diagonal movement
-    const magnitude = Math.sqrt(moveX * moveX + moveY * moveY);
-    if (magnitude > 0) {
-      moveX /= magnitude;
-      moveY /= magnitude;
+      // Move towards target with interpolation
+      this.x += dx * TOUCH_FOLLOW_RATE;
+      this.y += dy * TOUCH_FOLLOW_RATE;
+    } else {
+      // Keyboard control
+      if (gameState.keys['w'] || gameState.keys['arrowup']) moveY -= 1;
+      if (gameState.keys['s'] || gameState.keys['arrowdown']) moveY += 1;
+      if (gameState.keys['a'] || gameState.keys['arrowleft']) moveX -= 1;
+      if (gameState.keys['d'] || gameState.keys['arrowright']) moveX += 1;
+
+      // Normalize diagonal movement
+      const magnitude = Math.sqrt(moveX * moveX + moveY * moveY);
+      if (magnitude > 0) {
+        moveX /= magnitude;
+        moveY /= magnitude;
+      }
+
+      // Apply dash multiplier
+      let speed = PLAYER_PARAMS.moveSpeed;
+      if (this.isDashing) {
+        speed *= PLAYER_PARAMS.dashSpeedMultiplier;
+      }
+
+      // Update position
+      this.x += moveX * speed * dt;
+      this.y += moveY * speed * dt;
     }
-
-    // Apply dash multiplier
-    let speed = PLAYER_PARAMS.moveSpeed;
-    if (this.isDashing) {
-      speed *= PLAYER_PARAMS.dashSpeedMultiplier;
-    }
-
-    // Update position
-    this.x += moveX * speed * dt;
-    this.y += moveY * speed * dt;
 
     // Clamp to screen bounds
     this.x = Math.max(this.radius, Math.min(GAME_WIDTH - this.radius, this.x));
@@ -193,9 +215,17 @@ class Player {
       this.shotTimer = PLAYER_PARAMS.shotInterval;
     }
 
-    // Create trail particles when moving
-    if (magnitude > 0.1 && Math.random() < 0.3) {
-      gameState.particles.push(new Particle(this.x, this.y, '#40E0FF', 0.5, 2));
+    // Create trail particles when moving (for keyboard control)
+    if (!gameState.touch.active) {
+      const magnitude = Math.sqrt(moveX * moveX + moveY * moveY);
+      if (magnitude > 0.1 && Math.random() < 0.3) {
+        gameState.particles.push(new Particle(this.x, this.y, '#40E0FF', 0.5, 2));
+      }
+    } else {
+      // Create trail particles for touch control (based on movement)
+      if (Math.random() < 0.3) {
+        gameState.particles.push(new Particle(this.x, this.y, '#40E0FF', 0.5, 2));
+      }
     }
   }
 
@@ -550,8 +580,12 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
   }
 
-  // Start game on any key in title screen
+  // Handle menu navigation
   if (gameState.state === 'title') {
+    startGame();
+  } else if (gameState.state === 'stageclear') {
+    nextStage();
+  } else if (gameState.state === 'gameover') {
     startGame();
   }
 });
@@ -564,6 +598,8 @@ document.addEventListener('keyup', (e) => {
 canvas.addEventListener('click', () => {
   if (gameState.state === 'title') {
     startGame();
+  } else if (gameState.state === 'stageclear') {
+    nextStage();
   } else if (gameState.state === 'gameover') {
     startGame();
   }
@@ -578,13 +614,84 @@ canvas.addEventListener('mousemove', (e) => {
   gameState.mouse.y = (canvasY - offsetY) / scale;
 });
 
-// Touch support (basic)
+// Touch support
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
+
+  // Handle menu screens
   if (gameState.state === 'title') {
     startGame();
+    return;
+  } else if (gameState.state === 'stageclear') {
+    nextStage();
+    return;
   } else if (gameState.state === 'gameover') {
     startGame();
+    return;
+  }
+
+  // Handle gameplay touch
+  if (gameState.state === 'playing' && e.touches.length > 0) {
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const canvasX = touch.clientX - rect.left;
+    const canvasY = touch.clientY - rect.top;
+
+    // Convert to game coordinates
+    const gameX = (canvasX - offsetX) / scale;
+    const gameY = (canvasY - offsetY) / scale;
+
+    gameState.touch.active = true;
+    gameState.touch.startX = gameX;
+    gameState.touch.startY = gameY;
+    gameState.touch.currentX = gameX;
+    gameState.touch.currentY = gameY;
+    gameState.touch.targetX = gameX;
+    gameState.touch.targetY = gameY;
+    gameState.touch.startTime = performance.now();
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+
+  if (gameState.state === 'playing' && gameState.touch.active && e.touches.length > 0) {
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const canvasX = touch.clientX - rect.left;
+    const canvasY = touch.clientY - rect.top;
+
+    // Convert to game coordinates
+    const gameX = (canvasX - offsetX) / scale;
+    const gameY = (canvasY - offsetY) / scale;
+
+    gameState.touch.currentX = gameX;
+    gameState.touch.currentY = gameY;
+    gameState.touch.targetX = gameX;
+    gameState.touch.targetY = gameY;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+
+  if (gameState.state === 'playing' && gameState.touch.active) {
+    // Check for flick gesture
+    const dx = gameState.touch.currentX - gameState.touch.startX;
+    const dy = gameState.touch.currentY - gameState.touch.startY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const duration = performance.now() - gameState.touch.startTime;
+
+    // Flick detection: distance > 50 pixels in < 200ms
+    const FLICK_DISTANCE_THRESHOLD = 50;
+    const FLICK_TIME_THRESHOLD = 200;
+
+    if (distance > FLICK_DISTANCE_THRESHOLD && duration < FLICK_TIME_THRESHOLD && gameState.player) {
+      // Trigger dash in flick direction
+      gameState.player.dash();
+    }
+
+    gameState.touch.active = false;
   }
 }, { passive: false });
 
@@ -616,6 +723,33 @@ function startGame() {
   gameState.enemies = [];
   gameState.bullets = [];
   gameState.particles = [];
+
+  updateUI();
+}
+
+function nextStage() {
+  gameState.stageIndex++;
+
+  // Check if there are more stages
+  if (gameState.stageIndex >= stageConfigs.length) {
+    // No more stages - game complete (for now, loop back to stage 0)
+    gameState.stageIndex = 0;
+  }
+
+  gameState.state = 'playing';
+  gameState.elapsedTime = 0;
+  gameState.timeLeft = stageConfigs[gameState.stageIndex].duration;
+  gameState.spawnAccumulator = 0;
+
+  gameState.enemies = [];
+  gameState.bullets = [];
+  gameState.particles = [];
+
+  // Reset player position but keep lives and score
+  if (gameState.player) {
+    gameState.player.x = GAME_WIDTH / 2;
+    gameState.player.y = GAME_HEIGHT - 80;
+  }
 
   updateUI();
 }
@@ -652,6 +786,31 @@ function spawnEnemies(dt) {
   }
 }
 
+function updateEnemies(dt) {
+  const phase = getCurrentPhase();
+  const bulletSpeed = phase ? phase.bulletSpeed : 150;
+
+  for (let i = gameState.enemies.length - 1; i >= 0; i--) {
+    const enemy = gameState.enemies[i];
+    enemy.update(dt, bulletSpeed);
+
+    if (enemy.isOffScreen()) {
+      gameState.enemies.splice(i, 1);
+    }
+  }
+}
+
+function updateBullets(dt) {
+  for (let i = gameState.bullets.length - 1; i >= 0; i--) {
+    const bullet = gameState.bullets[i];
+    bullet.update(dt);
+
+    if (bullet.isOffScreen()) {
+      gameState.bullets.splice(i, 1);
+    }
+  }
+}
+
 function updateGame(dt) {
   // Clamp deltaTime to avoid huge jumps
   dt = Math.min(dt, 0.05);
@@ -662,8 +821,8 @@ function updateGame(dt) {
 
   if (gameState.timeLeft <= 0) {
     // Stage cleared!
-    // For now, just continue (could add stage progression here)
-    gameState.elapsedTime = 0;
+    gameState.state = 'stageclear';
+    return;
   }
 
   // Update player
@@ -672,28 +831,13 @@ function updateGame(dt) {
   }
 
   // Spawn enemies
-  const phase = getCurrentPhase();
   spawnEnemies(dt);
 
   // Update enemies
-  for (let i = gameState.enemies.length - 1; i >= 0; i--) {
-    const enemy = gameState.enemies[i];
-    enemy.update(dt, phase ? phase.bulletSpeed : 150);
-
-    if (enemy.isOffScreen()) {
-      gameState.enemies.splice(i, 1);
-    }
-  }
+  updateEnemies(dt);
 
   // Update bullets
-  for (let i = gameState.bullets.length - 1; i >= 0; i--) {
-    const bullet = gameState.bullets[i];
-    bullet.update(dt);
-
-    if (bullet.isOffScreen()) {
-      gameState.bullets.splice(i, 1);
-    }
-  }
+  updateBullets(dt);
 
   // Update particles
   for (let i = gameState.particles.length - 1; i >= 0; i--) {
@@ -810,63 +954,37 @@ function render() {
   }
 
   ctx.restore();
-
-  // Draw UI overlays (in screen coordinates, not game coordinates)
-  if (gameState.state === 'title') {
-    drawTitleScreen();
-  } else if (gameState.state === 'gameover') {
-    drawGameOverScreen();
-  }
-}
-
-function drawTitleScreen() {
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = '#40E0FF';
-  ctx.font = 'bold 48px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('Orbit-Bloom', canvas.width / 2, canvas.height / 2 - 40);
-
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = '24px sans-serif';
-  ctx.fillText('Click or Press Any Key to Start', canvas.width / 2, canvas.height / 2 + 40);
-
-  ctx.font = '16px sans-serif';
-  ctx.fillStyle = '#AAAAAA';
-  ctx.fillText('WASD/Arrow Keys: Move | Shift/Space: Dash', canvas.width / 2, canvas.height / 2 + 100);
-}
-
-function drawGameOverScreen() {
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = '#FF5A5A';
-  ctx.font = 'bold 48px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 60);
-
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = '32px sans-serif';
-  ctx.fillText(`Score: ${gameState.score}`, canvas.width / 2, canvas.height / 2);
-
-  ctx.font = '24px sans-serif';
-  ctx.fillText('Click or Press Any Key to Retry', canvas.width / 2, canvas.height / 2 + 60);
 }
 
 function updateUI() {
+  // Update game info displays
   document.getElementById('score').textContent = gameState.score;
   document.getElementById('lives').textContent = gameState.lives;
   document.getElementById('time').textContent = Math.ceil(Math.max(0, gameState.timeLeft));
 
-  // Show/hide UI based on game state
+  // Get overlay elements
   const gameInfo = document.getElementById('gameInfo');
-  if (gameState.state === 'playing') {
+  const titleScreen = document.getElementById('titleScreen');
+  const stageClearScreen = document.getElementById('stageClearScreen');
+  const gameOverScreen = document.getElementById('gameOverScreen');
+
+  // Hide all overlays first
+  titleScreen.style.display = 'none';
+  stageClearScreen.style.display = 'none';
+  gameOverScreen.style.display = 'none';
+  gameInfo.style.display = 'none';
+
+  // Show appropriate screen based on game state
+  if (gameState.state === 'title') {
+    titleScreen.style.display = 'flex';
+  } else if (gameState.state === 'playing') {
     gameInfo.style.display = 'block';
-  } else {
-    gameInfo.style.display = 'none';
+  } else if (gameState.state === 'stageclear') {
+    stageClearScreen.style.display = 'flex';
+    document.getElementById('stageClearScore').textContent = gameState.score;
+  } else if (gameState.state === 'gameover') {
+    gameOverScreen.style.display = 'flex';
+    document.getElementById('gameOverScore').textContent = gameState.score;
   }
 }
 

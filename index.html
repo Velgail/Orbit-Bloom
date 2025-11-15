@@ -25,6 +25,33 @@
         </div>
     </div>
 
+    <!-- Title Screen Overlay -->
+    <div id="titleScreen" class="overlay">
+        <div class="overlay-content">
+            <h1 class="title">Orbit-Bloom</h1>
+            <p class="subtitle">クリック / タップでスタート</p>
+            <p class="controls">WASD/矢印キー: 移動 | Shift/Space: ダッシュ</p>
+        </div>
+    </div>
+
+    <!-- Stage Clear Screen Overlay -->
+    <div id="stageClearScreen" class="overlay" style="display: none;">
+        <div class="overlay-content">
+            <h1 class="stage-clear">Stage Clear!</h1>
+            <p class="score-display">Score: <span id="stageClearScore">0</span></p>
+            <p class="subtitle">クリック / タップで次のステージへ</p>
+        </div>
+    </div>
+
+    <!-- Game Over Screen Overlay -->
+    <div id="gameOverScreen" class="overlay" style="display: none;">
+        <div class="overlay-content">
+            <h1 class="game-over">Game Over</h1>
+            <p class="score-display">Score: <span id="gameOverScore">0</span></p>
+            <p class="subtitle">クリック / タップでリトライ</p>
+        </div>
+    </div>
+
     <script src="main.js"></script>
 </body>
 </html>
