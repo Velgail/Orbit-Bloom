@@ -5,6 +5,8 @@
 import { GAME_WIDTH, GAME_HEIGHT, stageConfigs } from './config.js';
 import { gameState, init, getCurrentPhase } from './game/state.js';
 import { initInputHandlers } from './game/input.js';
+import { updateTouchControls } from './game/touch.js';
+import { triggerPowerUp, updatePowerTimer } from './game/power.js';
 import { checkCollisions } from './game/collision.js';
 import { spawnEnemies } from './game/spawn.js';
 import { updateUI } from './game/ui.js';
@@ -55,10 +57,16 @@ function updateGame(dt) {
   gameState.timeLeft = stageConfigs[gameState.stageIndex].duration - gameState.elapsedTime;
 
   if (gameState.timeLeft <= 0) {
-    // Stage cleared!
-    // For now, just continue (could add stage progression here)
+    // Stage cleared! Trigger power-up
+    triggerPowerUp();
     gameState.elapsedTime = 0;
   }
+
+  // Update power-up timer
+  updatePowerTimer(dt);
+
+  // Update touch controls
+  updateTouchControls(dt);
 
   // Update player
   if (gameState.player) {

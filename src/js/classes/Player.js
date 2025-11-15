@@ -5,6 +5,7 @@
 import { GAME_WIDTH, GAME_HEIGHT, PLAYER_PARAMS } from '../config.js';
 import { Bullet } from './Bullet.js';
 import { Particle } from './Particle.js';
+import { getPlayerPowerMultipliers } from '../game/power.js';
 
 export class Player {
   constructor(gameState) {
@@ -34,10 +35,21 @@ export class Player {
     let moveX = 0;
     let moveY = 0;
 
+    // Keyboard input
     if (this.gameState.keys['w'] || this.gameState.keys['arrowup']) moveY -= 1;
     if (this.gameState.keys['s'] || this.gameState.keys['arrowdown']) moveY += 1;
     if (this.gameState.keys['a'] || this.gameState.keys['arrowleft']) moveX -= 1;
     if (this.gameState.keys['d'] || this.gameState.keys['arrowright']) moveX += 1;
+
+    // Touch input (overrides keyboard if active)
+    if (this.gameState.touchMove) {
+      const touchX = this.gameState.touchMove.x;
+      const touchY = this.gameState.touchMove.y;
+      if (Math.abs(touchX) > 0.1 || Math.abs(touchY) > 0.1) {
+        moveX = touchX;
+        moveY = touchY;
+      }
+    }
 
     // Normalize diagonal movement
     const magnitude = Math.sqrt(moveX * moveX + moveY * moveY);
@@ -46,8 +58,9 @@ export class Player {
       moveY /= magnitude;
     }
 
-    // Apply dash multiplier
-    let speed = PLAYER_PARAMS.moveSpeed;
+    // Apply power multiplier and dash multiplier
+    const powerMult = getPlayerPowerMultipliers();
+    let speed = PLAYER_PARAMS.moveSpeed * powerMult.moveSpeed;
     if (this.isDashing) {
       speed *= PLAYER_PARAMS.dashSpeedMultiplier;
     }
@@ -72,10 +85,11 @@ export class Player {
       }
     }
 
-    // Auto-fire
+    // Auto-fire (with power scaling for fire rate)
     if (this.shotTimer <= 0) {
       this.shoot();
-      this.shotTimer = PLAYER_PARAMS.shotInterval;
+      const powerMult = getPlayerPowerMultipliers();
+      this.shotTimer = PLAYER_PARAMS.shotInterval / powerMult.fireRate;
     }
 
     // Create trail particles when moving
@@ -85,7 +99,9 @@ export class Player {
   }
 
   shoot() {
-    const bullet = new Bullet(this.x, this.y, 0, -1, 'player');
+    const powerMult = getPlayerPowerMultipliers();
+    const bulletSpeed = -300 * powerMult.bulletSpeed;
+    const bullet = new Bullet(this.x, this.y, 0, bulletSpeed, 'player');
     this.gameState.bullets.push(bullet);
   }
 

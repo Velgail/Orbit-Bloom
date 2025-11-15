@@ -3,6 +3,7 @@
 // =========================================
 
 import { gameState } from './state.js';
+import { drawTouchControls } from './touch.js';
 
 /**
  * Draw title screen overlay
@@ -52,6 +53,48 @@ function drawGameOverScreen(ctx, canvas) {
 }
 
 /**
+ * Draw power-up notification
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {HTMLCanvasElement} canvas
+ */
+function drawPowerUpNotification(ctx, canvas) {
+  if (gameState.powerUpTimer <= 0) return;
+
+  // Calculate fade and scale based on timer
+  const progress = gameState.powerUpTimer / 2.0; // 2.0 is max timer
+  const alpha = Math.min(1, progress * 2); // Fade in quickly, stay visible
+  const scale = 1 + (1 - progress) * 0.3; // Scale up slightly
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // Flash background
+  const flashAlpha = progress > 0.9 ? (1 - (progress - 0.9) / 0.1) * 0.3 : 0;
+  ctx.fillStyle = `rgba(255, 217, 90, ${flashAlpha})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Draw main text
+  ctx.fillStyle = '#FFD95A';
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 3;
+  ctx.font = `bold ${Math.round(56 * scale)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const text = 'POWER UP!';
+  ctx.strokeText(text, canvas.width / 2, canvas.height / 2 - 40);
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2 - 40);
+
+  // Draw level text
+  ctx.fillStyle = '#40E0FF';
+  ctx.font = `bold ${Math.round(36 * scale)}px sans-serif`;
+  const levelText = `LEVEL ${gameState.powerLevel}`;
+  ctx.strokeText(levelText, canvas.width / 2, canvas.height / 2 + 20);
+  ctx.fillText(levelText, canvas.width / 2, canvas.height / 2 + 20);
+
+  ctx.restore();
+}
+
+/**
  * Main render function
  * @param {CanvasRenderingContext2D} ctx
  * @param {HTMLCanvasElement} canvas
@@ -98,6 +141,14 @@ export function render(ctx, canvas, scale, offsetX, offsetY) {
   }
 
   ctx.restore();
+
+  // Draw touch controls (in screen coordinates)
+  drawTouchControls(ctx, canvas);
+
+  // Draw power-up notification (if active)
+  if (gameState.state === 'playing') {
+    drawPowerUpNotification(ctx, canvas);
+  }
 
   // Draw UI overlays (in screen coordinates, not game coordinates)
   if (gameState.state === 'title') {

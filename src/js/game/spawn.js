@@ -5,6 +5,7 @@
 import { GAME_WIDTH } from '../config.js';
 import { gameState, getCurrentPhase } from './state.js';
 import { Enemy } from '../classes/Enemy.js';
+import { getEnemyPowerMultipliers } from './power.js';
 
 /**
  * Spawn enemies based on current phase
@@ -14,7 +15,11 @@ export function spawnEnemies(dt) {
   const phase = getCurrentPhase();
   if (!phase) return;
 
-  gameState.spawnAccumulator += phase.spawnRate * dt;
+  // Apply power multiplier to spawn rate
+  const powerMult = getEnemyPowerMultipliers();
+  const effectiveSpawnRate = phase.spawnRate * powerMult.spawnRate;
+
+  gameState.spawnAccumulator += effectiveSpawnRate * dt;
 
   while (gameState.spawnAccumulator >= 1 && gameState.enemies.length < phase.maxEnemies) {
     gameState.spawnAccumulator -= 1;

@@ -15,8 +15,9 @@ export class Bullet {
     this.color = params.color;
 
     if (owner === 'player') {
-      this.vx = dirX * Math.abs(params.speedY);
-      this.vy = dirY * Math.abs(params.speedY);
+      const bulletSpeed = speed !== null ? Math.abs(speed) : Math.abs(params.speedY);
+      this.vx = dirX * bulletSpeed;
+      this.vy = dirY * bulletSpeed;
     } else {
       const bulletSpeed = speed || 150;
       this.vx = dirX * bulletSpeed;
