@@ -100,8 +100,8 @@ export class Player {
 
   shoot() {
     const powerMult = getPlayerPowerMultipliers();
-    const bulletSpeed = -300 * powerMult.bulletSpeed;
-    const bullet = new Bullet(this.x, this.y, 0, bulletSpeed, 'player');
+    const bulletSpeed = 300 * powerMult.bulletSpeed;
+    const bullet = new Bullet(this.x, this.y, 0, -1, 'player', bulletSpeed);
     this.gameState.bullets.push(bullet);
   }
 
