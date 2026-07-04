@@ -3,6 +3,7 @@
 // =========================================
 
 import { gameState } from './state.js';
+import { getPlayerPowerMultipliers } from './power.js';
 
 /**
  * Check all collisions in the game
@@ -10,7 +11,8 @@ import { gameState } from './state.js';
 export function checkCollisions() {
   if (!gameState.player) return;
 
-  // Player bullets vs enemies
+  // Player bullets vs enemies (bullet damage grows with power level)
+  const bulletDamage = getPlayerPowerMultipliers().damage;
   for (let i = gameState.bullets.length - 1; i >= 0; i--) {
     const bullet = gameState.bullets[i];
     if (bullet.owner !== 'player') continue;
@@ -23,7 +25,7 @@ export function checkCollisions() {
 
       if (dist < bullet.radius + enemy.radius) {
         gameState.bullets.splice(i, 1);
-        if (enemy.hit(1)) {
+        if (enemy.hit(bulletDamage)) {
           gameState.enemies.splice(j, 1);
         }
         break;

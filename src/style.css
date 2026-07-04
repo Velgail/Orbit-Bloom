@@ -4,6 +4,10 @@
     box-sizing: border-box;
 }
 
+html, body {
+    overscroll-behavior: none;
+}
+
 body {
     font-family: 'Arial', 'Helvetica', sans-serif;
     background: #000000;
@@ -11,6 +15,7 @@ body {
     overflow: hidden;
     width: 100vw;
     height: 100vh;
+    height: 100dvh; /* mobile browsers: track the visible viewport */
 }
 
 #gameCanvas {
@@ -21,6 +26,7 @@ body {
     height: 100%;
     display: block;
     cursor: default;
+    touch-action: none; /* the game handles all gestures; no scroll/zoom */
 }
 
 /* Game Info Overlay */

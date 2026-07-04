@@ -16,9 +16,9 @@ export function updateUI() {
   const timeLeft = Math.ceil(Math.max(0, gameState.timeLeft));
   document.getElementById('time').textContent = `W${waveNumber} ${timeLeft}s`;
 
-  // Show/hide UI based on game state
+  // Show/hide UI based on game state (paused keeps the HUD visible)
   const gameInfo = document.getElementById('gameInfo');
-  if (gameState.state === 'playing') {
+  if (gameState.state === 'playing' || gameState.state === 'paused') {
     gameInfo.style.display = 'block';
   } else {
     gameInfo.style.display = 'none';
