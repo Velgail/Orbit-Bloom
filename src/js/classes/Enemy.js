@@ -4,8 +4,9 @@
 
 import { GAME_WIDTH, GAME_HEIGHT, ENEMY_PARAMS } from '../config.js';
 import { Bullet } from './Bullet.js';
-import { Particle } from './Particle.js';
+import { spawnBurst } from './Particle.js';
 import { getEnemyPowerMultipliers } from '../game/power.js';
+import { playSfx } from '../game/audio.js';
 
 export class Enemy {
   constructor(type, x, y, speedMultiplier = 1.0, gameState) {
@@ -30,36 +31,25 @@ export class Enemy {
     this.turnTimer = 0;
     this.angle = Math.PI / 2; // Start moving down
     this.spiralAngle = 0; // For spiral bullet pattern
+    this.flashTimer = 0; // White flash on non-lethal hits
 
-    // Initial velocity
-    if (type === 'basic') {
-      this.vy = this.params.speedY * speedMultiplier;
-      this.vx = 0;
-    } else if (type === 'zigzag') {
-      this.vy = this.params.speedY * speedMultiplier;
-      this.vx = 0;
+    // Initial velocity: every type starts straight down at its
+    // power-inclusive speed (homing recomputes direction each frame)
+    this.vx = 0;
+    this.vy = (this.params.speedY ?? this.params.speed) * this.speedMultiplier;
+
+    // Type-specific anchors for movement patterns
+    if (type === 'zigzag' || type === 'wave' || type === 'spiral') {
       this.startX = x;
-    } else if (type === 'wave') {
-      this.vy = this.params.speedY * speedMultiplier;
-      this.vx = 0;
-      this.startX = x;
-    } else if (type === 'spiral') {
-      this.vy = this.params.speedY * speedMultiplier;
-      this.vx = 0;
-      this.startX = x;
+    }
+    if (type === 'spiral') {
       this.startY = y;
-    } else if (type === 'homing') {
-      const speed = this.params.speed * speedMultiplier;
-      this.vx = 0;
-      this.vy = speed;
-    } else if (type === 'shooter' || type === 'shooter_spread' || type === 'shooter_radial' || type === 'shooter_spiral') {
-      this.vy = this.params.speedY * speedMultiplier;
-      this.vx = 0;
     }
   }
 
   update(dt, bulletSpeed) {
     this.time += dt;
+    if (this.flashTimer > 0) this.flashTimer -= dt;
 
     if (this.type === 'basic') {
       this.y += this.vy * dt;
@@ -179,37 +169,45 @@ export class Enemy {
       this.destroy();
       return true;
     }
+
+    // Non-lethal hit feedback: white flash + impact sparks
+    this.flashTimer = 0.08;
+    playSfx('enemyHit');
+    spawnBurst(this.gameState.particles, this.x, this.y, {
+      count: 3, color: '#FFFFFF', lifetime: 0.2, size: 2, minSpeed: 40, maxSpeed: 80,
+    });
     return false;
   }
 
   destroy() {
     this.gameState.score += this.params.score;
+    playSfx('explosion');
 
     // Create explosion particles
-    for (let i = 0; i < 15; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 30 + Math.random() * 80;
-      this.gameState.particles.push(new Particle(
-        this.x, this.y, this.color, 0.6, 2 + Math.random() * 2,
-        Math.cos(angle) * speed, Math.sin(angle) * speed
-      ));
-    }
+    spawnBurst(this.gameState.particles, this.x, this.y, {
+      count: 15, color: this.color, lifetime: 0.6, size: 2, sizeJitter: 2, minSpeed: 30, maxSpeed: 110,
+    });
   }
 
   isOffScreen() {
-    return this.y > GAME_HEIGHT + 50 || this.y < -50 || this.x < -50 || this.x > GAME_WIDTH + 50;
+    // Spiral enemies swing up to spiralSpeed px sideways; give them room
+    // so they are not silently culled mid-pattern
+    const marginX = this.type === 'spiral' ? this.params.spiralSpeed + 60 : 50;
+    return this.y > GAME_HEIGHT + 50 || this.y < -50 || this.x < -marginX || this.x > GAME_WIDTH + marginX;
   }
 
   draw(ctx) {
+    const bodyColor = this.flashTimer > 0 ? '#FFFFFF' : this.color;
+
     if (this.type === 'basic') {
       // Circle
-      ctx.fillStyle = this.color;
+      ctx.fillStyle = bodyColor;
       ctx.beginPath();
       ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
       ctx.fill();
     } else if (this.type === 'zigzag') {
       // Diamond
-      ctx.fillStyle = this.color;
+      ctx.fillStyle = bodyColor;
       ctx.beginPath();
       ctx.moveTo(this.x, this.y - this.radius);
       ctx.lineTo(this.x + this.radius, this.y);
@@ -219,7 +217,7 @@ export class Enemy {
       ctx.fill();
     } else if (this.type === 'wave') {
       // Rounded diamond (softer edges)
-      ctx.fillStyle = this.color;
+      ctx.fillStyle = bodyColor;
       ctx.beginPath();
       ctx.moveTo(this.x, this.y - this.radius);
       ctx.quadraticCurveTo(this.x + this.radius * 0.7, this.y - this.radius * 0.3, this.x + this.radius, this.y);
@@ -229,7 +227,7 @@ export class Enemy {
       ctx.fill();
     } else if (this.type === 'spiral') {
       // Star shape (5-pointed)
-      ctx.fillStyle = this.color;
+      ctx.fillStyle = bodyColor;
       ctx.beginPath();
       for (let i = 0; i < 10; i++) {
         const angle = (Math.PI * 2 * i) / 10 - Math.PI / 2;
@@ -243,7 +241,7 @@ export class Enemy {
       ctx.fill();
     } else if (this.type === 'homing') {
       // Triangle pointing in movement direction
-      ctx.fillStyle = this.color;
+      ctx.fillStyle = bodyColor;
       ctx.save();
       ctx.translate(this.x, this.y);
       ctx.rotate(this.angle);
@@ -256,7 +254,7 @@ export class Enemy {
       ctx.restore();
     } else if (this.type === 'shooter') {
       // Larger circle with inner circle
-      ctx.fillStyle = this.color;
+      ctx.fillStyle = bodyColor;
       ctx.beginPath();
       ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
       ctx.fill();
@@ -266,7 +264,7 @@ export class Enemy {
       ctx.fill();
     } else if (this.type === 'shooter_spread') {
       // Pentagon with inner circle
-      ctx.fillStyle = this.color;
+      ctx.fillStyle = bodyColor;
       ctx.beginPath();
       for (let i = 0; i < 5; i++) {
         const angle = (Math.PI * 2 * i) / 5 - Math.PI / 2;
@@ -283,7 +281,7 @@ export class Enemy {
       ctx.fill();
     } else if (this.type === 'shooter_radial') {
       // Hexagon (6-sided) with rotating inner pattern
-      ctx.fillStyle = this.color;
+      ctx.fillStyle = bodyColor;
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {
         const angle = (Math.PI * 2 * i) / 6 - Math.PI / 2;
@@ -313,7 +311,7 @@ export class Enemy {
       ctx.restore();
     } else if (this.type === 'shooter_spiral') {
       // Square with rotating inner square
-      ctx.fillStyle = this.color;
+      ctx.fillStyle = bodyColor;
       ctx.save();
       ctx.translate(this.x, this.y);
       ctx.rotate(this.time);

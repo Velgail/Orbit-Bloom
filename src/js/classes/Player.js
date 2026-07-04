@@ -4,8 +4,10 @@
 
 import { GAME_WIDTH, GAME_HEIGHT, PLAYER_PARAMS } from '../config.js';
 import { Bullet } from './Bullet.js';
-import { Particle } from './Particle.js';
+import { Particle, spawnBurst } from './Particle.js';
 import { getPlayerPowerMultipliers } from '../game/power.js';
+import { endGame } from '../game/state.js';
+import { playSfx } from '../game/audio.js';
 
 export class Player {
   constructor(gameState) {
@@ -25,6 +27,9 @@ export class Player {
     this.dashTimer = 0;
     this.dashCooldownTimer = 0;
     this.isDashing = false;
+    // Last non-zero movement direction; dashing while stationary uses it
+    this.lastMoveX = 0;
+    this.lastMoveY = -1;
 
     // Invincibility
     this.invincibleTimer = 0;
@@ -52,10 +57,17 @@ export class Player {
     }
 
     // Normalize diagonal movement
-    const magnitude = Math.sqrt(moveX * moveX + moveY * moveY);
+    let magnitude = Math.sqrt(moveX * moveX + moveY * moveY);
     if (magnitude > 0) {
       moveX /= magnitude;
       moveY /= magnitude;
+      this.lastMoveX = moveX;
+      this.lastMoveY = moveY;
+    } else if (this.isDashing) {
+      // Dash with no directional input travels along the last movement direction
+      moveX = this.lastMoveX;
+      moveY = this.lastMoveY;
+      magnitude = 1;
     }
 
     // Apply power multiplier and dash multiplier
@@ -88,7 +100,6 @@ export class Player {
     // Auto-fire (with power scaling for fire rate)
     if (this.shotTimer <= 0) {
       this.shoot();
-      const powerMult = getPlayerPowerMultipliers();
       this.shotTimer = PLAYER_PARAMS.shotInterval / powerMult.fireRate;
     }
 
@@ -103,40 +114,53 @@ export class Player {
     const bulletSpeed = 300 * powerMult.bulletSpeed;
     const bullet = new Bullet(this.x, this.y, 0, -1, 'player', bulletSpeed);
     this.gameState.bullets.push(bullet);
+    playSfx('shoot');
   }
 
+  /**
+   * Trigger a dash. Returns true when the dash actually started,
+   * so UI layers can reflect the real cooldown.
+   */
   dash() {
     if (this.dashCooldownTimer <= 0 && !this.isDashing) {
       this.isDashing = true;
       this.dashTimer = PLAYER_PARAMS.dashDuration;
       this.dashCooldownTimer = PLAYER_PARAMS.dashCooldown;
       this.invincibleTimer = PLAYER_PARAMS.dashDuration; // Invincible during dash
+      playSfx('dash');
+      return true;
     }
+    return false;
   }
 
   hit() {
     if (this.invincibleTimer <= 0) {
       this.gameState.lives--;
       this.invincibleTimer = PLAYER_PARAMS.invincibleDurationOnHit;
+      this.gameState.shakeTimer = 0.25;
+      playSfx('playerHit');
 
       // Create explosion particles
-      for (let i = 0; i < 20; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const speed = 50 + Math.random() * 100;
-        this.gameState.particles.push(new Particle(
-          this.x, this.y, '#40E0FF', 0.8, 3,
-          Math.cos(angle) * speed, Math.sin(angle) * speed
-        ));
-      }
+      spawnBurst(this.gameState.particles, this.x, this.y, {
+        count: 20, color: '#40E0FF', lifetime: 0.8, size: 3, minSpeed: 50, maxSpeed: 150,
+      });
 
       if (this.gameState.lives <= 0) {
-        this.gameState.state = 'gameover';
+        endGame();
       }
     }
   }
 
   isInvincible() {
     return this.invincibleTimer > 0;
+  }
+
+  /**
+   * 0 = dash ready, 1 = cooldown just started. Shared by the on-ship
+   * arc and the touch dash button so the two indicators never disagree.
+   */
+  dashCooldownRatio() {
+    return Math.max(0, this.dashCooldownTimer) / PLAYER_PARAMS.dashCooldown;
   }
 
   draw(ctx) {
@@ -168,5 +192,15 @@ export class Player {
     ctx.fill();
 
     ctx.globalAlpha = 1.0;
+
+    // Dash cooldown arc: fills clockwise, disappears when the dash is ready
+    if (this.dashCooldownTimer > 0 && !this.isDashing) {
+      const progress = 1 - this.dashCooldownRatio();
+      ctx.strokeStyle = 'rgba(255, 217, 90, 0.7)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius + 8, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+      ctx.stroke();
+    }
   }
 }

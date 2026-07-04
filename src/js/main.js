@@ -5,7 +5,7 @@
 import { GAME_WIDTH, GAME_HEIGHT, stageConfigs } from './config.js';
 import { gameState, init, getCurrentPhase } from './game/state.js';
 import { initInputHandlers } from './game/input.js';
-import { updateTouchControls } from './game/touch.js';
+import { initTouchControls, updateTouchControls } from './game/touch.js';
 import { triggerPowerUp, updatePowerTimer } from './game/power.js';
 import { checkCollisions } from './game/collision.js';
 import { spawnEnemies } from './game/spawn.js';
@@ -18,31 +18,38 @@ import { render } from './game/render.js';
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+let dpr = 1;
 let scale = 1;
 let offsetX = 0;
 let offsetY = 0;
 
 function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  // Render at device resolution for crisp output on high-DPI screens;
+  // all game/UI code keeps working in CSS pixels via the dpr transform
+  dpr = window.devicePixelRatio || 1;
+  const viewWidth = window.innerWidth;
+  const viewHeight = window.innerHeight;
+  canvas.width = viewWidth * dpr;
+  canvas.height = viewHeight * dpr;
+  canvas.style.width = viewWidth + 'px';
+  canvas.style.height = viewHeight + 'px';
 
-  // Calculate scale to fit game area
-  const scaleX = canvas.width / GAME_WIDTH;
-  const scaleY = canvas.height / GAME_HEIGHT;
+  // Calculate scale to fit game area (in CSS pixels)
+  const scaleX = viewWidth / GAME_WIDTH;
+  const scaleY = viewHeight / GAME_HEIGHT;
   scale = Math.min(scaleX, scaleY);
 
-  // Calculate offset to center the game
-  offsetX = (canvas.width - GAME_WIDTH * scale) / 2;
-  offsetY = (canvas.height - GAME_HEIGHT * scale) / 2;
+  // Calculate offset to center the game (in CSS pixels)
+  offsetX = (viewWidth - GAME_WIDTH * scale) / 2;
+  offsetY = (viewHeight - GAME_HEIGHT * scale) / 2;
+
+  // Touch controls depend on the viewport: re-evaluate on every resize
+  initTouchControls();
 }
 
 window.addEventListener('resize', resizeCanvas);
+window.addEventListener('orientationchange', resizeCanvas);
 resizeCanvas();
-
-// Helper function for input handlers
-function getScaleAndOffset() {
-  return { scale, offsetX, offsetY };
-}
 
 // =========================================
 // Game Update Logic
@@ -72,7 +79,7 @@ function updateGame(dt) {
   updatePowerTimer(dt);
 
   // Update touch controls
-  updateTouchControls(dt);
+  updateTouchControls();
 
   // Update player
   if (gameState.player) {
@@ -137,9 +144,18 @@ function gameLoop(currentTime) {
 
   if (gameState.state === 'playing') {
     updateGame(deltaTime);
+  } else {
+    // Keep the starfield alive on title / pause / game-over screens
+    const dt = Math.min(deltaTime, 0.05);
+    for (const star of gameState.stars) {
+      star.update(dt);
+    }
   }
 
-  render(ctx, canvas, scale, offsetX, offsetY);
+  // Screen shake decays in every state so the game-over screen settles
+  gameState.shakeTimer = Math.max(0, gameState.shakeTimer - deltaTime);
+
+  render(ctx, canvas, scale, offsetX, offsetY, dpr);
 
   requestAnimationFrame(gameLoop);
 }
@@ -149,6 +165,6 @@ function gameLoop(currentTime) {
 // =========================================
 
 init();
-initInputHandlers(canvas, getScaleAndOffset);
+initInputHandlers(canvas);
 updateUI();
 requestAnimationFrame(gameLoop);

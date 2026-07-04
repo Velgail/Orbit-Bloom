@@ -14,7 +14,7 @@ export const PLAYER_PARAMS = {
   shotInterval: 0.2,
   dashSpeedMultiplier: 2.5,
   dashDuration: 0.2,
-  dashCooldown: 2.0,
+  dashCooldown: 1.5,
   invincibleDurationOnHit: 1.0,
   initialLives: 3,
 };
@@ -25,11 +25,11 @@ export const ENEMY_PARAMS = {
   zigzag: { speedY: 70, radius: 10, ampX: 30, freq: 2, hp: 1, score: 15, color: '#FF5AF2' },
   wave: { speedY: 65, radius: 9, ampX: 50, freq: 1.5, hp: 1, score: 18, color: '#FFB3E6' }, // Smooth wave pattern
   spiral: { speedY: 55, radius: 10, spiralSpeed: 120, freq: 2, hp: 2, score: 22, color: '#B3E6FF' }, // Spiral pattern
-  homing: { speed: 80, radius: 9, turnInterval: 0.25, turnAngle: 0.2, hp: 2, score: 25, color: '#7CFF5A' },
+  homing: { speed: 80, radius: 9, turnInterval: 0.25, turnAngle: 0.3, hp: 2, score: 25, color: '#7CFF5A' },
   shooter: { speedY: 50, radius: 12, shotInterval: 2.0, hp: 2, score: 30, color: '#FFA05A' }, // Single aimed shot
   shooter_spread: { speedY: 45, radius: 12, shotInterval: 2.5, hp: 3, score: 35, color: '#FF8AC9' }, // 3-way spread shot
   shooter_radial: { speedY: 40, radius: 14, shotInterval: 3.5, hp: 3, score: 45, color: '#8AFFEF' }, // Beautiful 6-way radial pattern
-  shooter_spiral: { speedY: 40, radius: 14, shotInterval: 0.15, hp: 4, score: 60, color: '#FFEF8A' }, // Continuous spiral pattern
+  shooter_spiral: { speedY: 40, radius: 14, shotInterval: 0.3, hp: 4, score: 80, color: '#FFEF8A' }, // Continuous spiral pattern
 };
 
 // Bullet Parameters
@@ -37,6 +37,26 @@ export const BULLET_PARAMS = {
   player: { speedY: -300, radius: 3, color: '#40E0FF' },
   enemy: { radius: 3, color: '#FF5A5A' },
 };
+
+// Progressive Power Scaling (per power level, applied by game/power.js)
+export const POWER_PARAMS = {
+  player: {
+    moveSpeedPerLevel: 0.1,   // +10% move speed per level
+    moveSpeedCap: 1.5,        // capped so dodging never trivializes
+    fireRatePerLevel: 0.15,   // +15% fire rate per level
+    bulletSpeedPerLevel: 0.1, // +10% bullet speed per level
+    damageEveryLevels: 3,     // +1 bullet damage every N levels
+  },
+  enemy: {
+    hpPerLevel: 0.18,         // +18% HP per level
+    speedPerLevel: 0.08,      // +8% speed per level
+    spawnRatePerLevel: 0.05,  // +5% spawn rate per level
+    maxEnemiesCap: 30,        // maxEnemies grows +1 per level, capped at this total
+  },
+};
+
+// UI / flow parameters
+export const RESTART_LOCKOUT = 0.8; // seconds after game over before restart input is accepted
 
 // Stage Configuration (Waves)
 export const stageConfigs = [
@@ -67,7 +87,8 @@ export const stageConfigs = [
         endTime: 60,
         spawnRate: 0.7,
         maxEnemies: 12,
-        allowedTypes: ['basic', 'zigzag', 'wave', 'shooter', 'shooter_radial'],
+        // Duplicated entries weight the random pick: shooters stay a minority for first-timers
+        allowedTypes: ['basic', 'basic', 'zigzag', 'wave', 'shooter'],
         enemySpeedMultiplier: 1.0,
         bulletSpeed: 140,
       },

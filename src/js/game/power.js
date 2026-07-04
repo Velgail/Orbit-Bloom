@@ -3,18 +3,21 @@
 // =========================================
 
 import { gameState } from './state.js';
-import { Particle } from '../classes/Particle.js';
-import { GAME_WIDTH, GAME_HEIGHT } from '../config.js';
+import { Particle, spawnBurst } from '../classes/Particle.js';
+import { GAME_WIDTH, GAME_HEIGHT, POWER_PARAMS } from '../config.js';
+import { playSfx } from './audio.js';
 
 /**
  * Get player power scaling multipliers based on current power level
  */
 export function getPlayerPowerMultipliers() {
   const level = gameState.powerLevel;
+  const p = POWER_PARAMS.player;
   return {
-    moveSpeed: 1 + (level * 0.1), // 10% increase per level
-    fireRate: 1 + (level * 0.15), // 15% faster shooting per level
-    bulletSpeed: 1 + (level * 0.1), // 10% faster bullets per level
+    moveSpeed: Math.min(1 + level * p.moveSpeedPerLevel, p.moveSpeedCap),
+    fireRate: 1 + level * p.fireRatePerLevel,
+    bulletSpeed: 1 + level * p.bulletSpeedPerLevel,
+    damage: 1 + Math.floor(level / p.damageEveryLevels),
   };
 }
 
@@ -23,19 +26,39 @@ export function getPlayerPowerMultipliers() {
  */
 export function getEnemyPowerMultipliers() {
   const level = gameState.powerLevel;
+  const e = POWER_PARAMS.enemy;
   return {
-    hp: 1 + (level * 0.3), // 30% more HP per level
-    speed: 1 + (level * 0.12), // 12% faster per level
-    spawnRate: 1 + (level * 0.15), // 15% faster spawning per level
+    hp: 1 + level * e.hpPerLevel,
+    speed: 1 + level * e.speedPerLevel,
+    spawnRate: 1 + level * e.spawnRatePerLevel,
   };
 }
 
 /**
- * Trigger a power-up when timer completes
+ * On-screen enemy cap grows +1 per power level (sustained late-game
+ * pressure), capped at maxEnemiesCap total
+ */
+export function getEffectiveMaxEnemies(phaseMaxEnemies) {
+  return Math.min(phaseMaxEnemies + gameState.powerLevel, POWER_PARAMS.enemy.maxEnemiesCap);
+}
+
+/**
+ * Trigger a power-up when a wave is cleared
  */
 export function triggerPowerUp() {
   gameState.powerLevel++;
   gameState.powerUpTimer = 2.0; // 2 second animation
+  playSfx('powerUp');
+
+  // Reward beat: pop all enemy bullets so the new wave starts on a clean screen
+  for (let i = gameState.bullets.length - 1; i >= 0; i--) {
+    const b = gameState.bullets[i];
+    if (b.owner !== 'enemy') continue;
+    spawnBurst(gameState.particles, b.x, b.y, {
+      count: 3, color: '#FFFFFF', lifetime: 0.4, size: 2, minSpeed: 30, maxSpeed: 90,
+    });
+    gameState.bullets.splice(i, 1);
+  }
 
   // Create explosion of particles from center
   const centerX = GAME_WIDTH / 2;

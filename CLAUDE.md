@@ -4,7 +4,7 @@ This document provides comprehensive guidance for AI assistants working with the
 
 ## Project Overview
 
-**Orbit-Bloom** (オービット・ブルーム) is a minimalist survival shooter game built with pure HTML5 Canvas and vanilla JavaScript. The game features simple geometric shapes in a space-themed environment where players must survive waves of enemies.
+**Orbit-Bloom** (オービット・ブルーム) is a minimalist survival shooter game built with pure HTML5 Canvas and vanilla JavaScript. The game features simple geometric shapes in a space-themed environment where players must survive escalating waves of enemies while both sides grow stronger through a progressive power system.
 
 - **Type**: Browser-based HTML5 Canvas game
 - **Genre**: Survival shooter / Bullet hell lite
@@ -16,43 +16,48 @@ This document provides comprehensive guidance for AI assistants working with the
 
 ```
 Orbit-Bloom/
+├── index.html          # GitHub Pages redirect stub (meta refresh → src/)
 ├── src/                # Source code directory
-│   ├── index.html      # Main HTML entry point
-│   ├── style.css       # Styling and layout (~49 lines)
+│   ├── index.html      # Main HTML entry point (canvas + HUD overlay)
+│   ├── style.css       # Styling and layout (~120 lines)
 │   └── js/             # Modular JavaScript files (ES6 modules)
 │       ├── config.js   # Configuration constants and parameters
-│       ├── main.js     # Entry point and game loop
+│       ├── main.js     # Entry point, canvas/DPR setup, game loop
 │       ├── classes/    # Entity class definitions
-│       │   ├── Player.js   # Player class with movement, shooting, dash
-│       │   ├── Enemy.js    # Enemy class with multiple types
+│       │   ├── Player.js   # Player class with movement, auto-fire, dash
+│       │   ├── Enemy.js    # Enemy class with 9 enemy types
 │       │   ├── Bullet.js   # Bullet class for player and enemy bullets
 │       │   ├── Particle.js # Particle effects
-│       │   └── Star.js     # Background stars
+│       │   └── Star.js     # Background stars (twinkle + parallax scroll)
 │       └── game/       # Game logic modules
-│           ├── state.js    # Game state management
-│           ├── input.js    # Input handling (keyboard, mouse, touch)
-│           ├── touch.js    # Touch controls for mobile devices
+│           ├── state.js    # Game state, start/end game, high score
+│           ├── input.js    # Keyboard/mouse/touch input, pause, mute
+│           ├── touch.js    # Virtual joystick and dash button
 │           ├── collision.js # Collision detection
 │           ├── spawn.js    # Enemy spawning logic
-│           ├── ui.js       # UI updates
-│           └── render.js   # Rendering pipeline
+│           ├── power.js    # Progressive power scaling + wave-clear power-up
+│           ├── audio.js    # WebAudio oscillator sound effects
+│           ├── ui.js       # HUD (score / wave+time / lives) updates
+│           └── render.js   # Rendering pipeline and screen overlays
 ├── LICENSE             # Boost Software License 1.0
 ├── README.md           # Project README (Japanese)
 ├── docs/
-│   └── spec-orbit-bloom.md  # Comprehensive technical spec (Japanese, ~400 lines)
+│   └── spec-orbit-bloom.md  # Technical spec (Japanese, ~400 lines)
 └── CLAUDE.md           # This file
 ```
 
 ### File Purposes
 
-- **src/index.html**: Minimal HTML structure with canvas element and game info display
-- **src/style.css**: Simple styling with dark gradient background and centered layout
-- **src/js/config.js**: All configuration constants (PLAYER_PARAMS, ENEMY_PARAMS, etc.)
-- **src/js/main.js**: Entry point, canvas setup, game loop, and update logic
-- **src/js/classes/***: Individual class files following Single Responsibility Principle
+- **index.html** (root): Redirect stub so GitHub Pages serves `src/` as the game
+- **src/index.html**: Canvas element plus HTML HUD overlay (SCORE / TIME / LIVES)
+- **src/style.css**: Fullscreen canvas, HUD overlay styling, mobile media query
+- **src/js/config.js**: All constants (PLAYER_PARAMS, ENEMY_PARAMS, BULLET_PARAMS, POWER_PARAMS, RESTART_LOCKOUT, stageConfigs)
+- **src/js/main.js**: Entry point, devicePixelRatio-aware canvas sizing, game loop, wave progression
+- **src/js/classes/***: Individual entity class files (Single Responsibility)
 - **src/js/game/***: Game logic modules organized by functionality
-- **src/js/game/touch.js**: Touch control system for mobile devices (virtual joystick and dash button)
-- **docs/spec-orbit-bloom.md**: Detailed technical specification and implementation guide
+- **src/js/game/power.js**: Power-level multipliers for player and enemies; wave-clear power-up
+- **src/js/game/audio.js**: Oscillator-only sound effects with persisted mute toggle
+- **docs/spec-orbit-bloom.md**: Original design specification (implementation has evolved beyond it)
 
 ## Technology Stack
 
@@ -60,10 +65,12 @@ Orbit-Bloom/
 - **HTML5 Canvas 2D Context**: All graphics rendering
 - **Vanilla JavaScript (ES6)**: No frameworks or libraries
 - **CSS3**: Basic styling and layout
+- **WebAudio API**: Synthesized sound effects (no audio files)
+- **localStorage**: High score and mute preference persistence
 
 ### Key Constraints
 - ✅ No external libraries or frameworks
-- ✅ No image assets (all graphics are canvas primitives)
+- ✅ No image or audio assets (canvas primitives + oscillator SFX only)
 - ✅ No build process required
 - ✅ Pure client-side, no backend
 
@@ -82,8 +89,8 @@ Orbit-Bloom/
 **Module Organization**:
 - **js/config.js**: All configuration constants exported as named exports
 - **js/classes/**: Each entity class in its own file
-- **js/game/**: Game logic organized by functionality (state, input, collision, etc.)
-- **js/main.js**: Minimal entry point that imports and coordinates all modules
+- **js/game/**: Game logic organized by functionality (state, input, power, audio, etc.)
+- **js/main.js**: Entry point that imports and coordinates all modules
 
 ### Game Loop Pattern
 
@@ -92,19 +99,29 @@ The game uses `requestAnimationFrame` for smooth rendering:
 ```javascript
 // In js/main.js
 function gameLoop(currentTime) {
-    const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
+    const deltaTime = (currentTime - lastTime) / 1000; // seconds
+    lastTime = currentTime;
+
     if (gameState.state === 'playing') {
-        updateGame(deltaTime);
+        updateGame(deltaTime); // clamps dt to 0.05s internally
+    } else {
+        // Starfield keeps animating on title / pause / game-over screens
+        for (const star of gameState.stars) star.update(Math.min(deltaTime, 0.05));
     }
-    render(ctx, canvas, scale, offsetX, offsetY);
+
+    // Screen shake decays in every state
+    gameState.shakeTimer = Math.max(0, gameState.shakeTimer - deltaTime);
+
+    render(ctx, canvas, scale, offsetX, offsetY, dpr);
     requestAnimationFrame(gameLoop);
 }
 ```
 
 **Key Points**:
-- Delta time is calculated in seconds for frame-rate independence
-- All movement/timers use delta time for consistency
-- Update and render are separated for clarity
+- Delta time is in seconds and clamped to 0.05s to avoid huge jumps
+- All movement/timers use delta time for frame-rate independence
+- The starfield and screen-shake decay run in every state, not just 'playing'
+- The canvas backing store is scaled by `devicePixelRatio`; `resizeCanvas()` in main.js recomputes `dpr`, `scale`, `offsetX/Y` and re-evaluates touch controls on every `resize`/`orientationchange`
 
 ### Core Components
 
@@ -120,24 +137,27 @@ export const PLAYER_PARAMS = {
     shotInterval: 0.2,
     dashSpeedMultiplier: 2.5,
     dashDuration: 0.2,
-    dashCooldown: 2.0,
+    dashCooldown: 1.5,
     invincibleDurationOnHit: 1.0,
     initialLives: 3,
 };
 
-export const ENEMY_PARAMS = { /* ... */ };
-export const BULLET_PARAMS = { /* ... */ };
-export const stageConfigs = [ /* ... */ ];
+export const ENEMY_PARAMS = { /* 9 types, see Enemy Class below */ };
+export const BULLET_PARAMS = { /* player and enemy bullet params */ };
+export const POWER_PARAMS = { /* per-level scaling, see Power Scaling */ };
+export const RESTART_LOCKOUT = 0.8; // seconds before restart input works after game over
+export const stageConfigs = [ /* 4 wave configs, see Wave Progression */ ];
 ```
 
 **Convention**: All tunable parameters are exported from config.js for easy balancing.
 
 #### 2. Game State Module (js/game/state.js)
 Central state management object and functions:
-- `gameState` object containing all mutable game state
-- `init()` function for initialization
-- `startGame()` function to start/restart
-- `getCurrentPhase()` function for stage management
+- `gameState` object containing all mutable game state, including `state` ('title' | 'playing' | 'paused' | 'gameover'), `score`, `highScore`, `isNewRecord`, `stageIndex`, `powerLevel`, `powerUpTimer`, `gameoverAt`, `shakeTimer`, `spawnAccumulator`, entity arrays, `keys`, and `touchMove`
+- `init()`: creates 100 background stars, sets title screen
+- `startGame()`: resets score/lives/wave/power/timers/inputs and rebuilds entities
+- `endGame()`: sets 'gameover', stamps `gameoverAt` (for the restart lockout), plays the gameOver SFX, and saves a new high score to localStorage key `'orbitBloomHighScore'` (setting `isNewRecord` when beaten)
+- `getCurrentPhase()`: returns the current phase of the current wave by elapsed time
 
 **Convention**: All mutable game state lives in the exported `gameState` object.
 
@@ -145,102 +165,116 @@ Central state management object and functions:
 
 **Player Class** (js/classes/Player.js):
 - Constructor takes `gameState` reference
-- `update(dt)`: Handles movement, shooting, dash, timers
-- `draw(ctx)`: Renders player with glow effects
-- `shoot()`: Creates bullets
-- `dash()`: Triggers dash mechanic
-- `hit()`: Handles damage and invincibility
-- `isInvincible()`: Returns invincibility status
+- `update(dt)`: movement (keyboard + touch), timers, auto-fire with power-scaled fire rate, trail particles
+- `draw(ctx)`: circle body + wing triangle, glow, invincibility blink, and a yellow **dash cooldown arc** around the ship while the cooldown runs
+- `shoot()`: fires straight up with power-scaled bullet speed
+- `dash()`: **returns a boolean** — true only when the dash actually started, so UI layers reflect the real cooldown. Dashing with no directional input travels along the last movement direction (`lastMoveX/Y`, defaults to up). Player is invincible during the dash. Cooldown is 1.5s.
+- `hit()`: decrements lives, 1s invincibility, 0.25s screen shake, explosion particles, calls `endGame()` at 0 lives
+- `isInvincible()`: returns invincibility status
 
 **Enemy Class** (js/classes/Enemy.js):
-- Constructor takes type, position, speed multiplier, and `gameState`
-- Supports multiple enemy types: basic, zigzag, homing, shooter
-- `update(dt, bulletSpeed)`: Type-specific movement and shooting
-- `draw(ctx)`: Type-specific rendering (circle, diamond, triangle)
-- `hit(damage)`: Damage handling
-- `destroy()`: Explosion particles and score
-- `isOffScreen()`: Bounds checking
+- Constructor takes type, position, phase speed multiplier, and `gameState`. HP and speed are scaled by the enemy power multipliers **for all types** at construction; HP is rounded.
+- `update(dt, bulletSpeed)`: type-specific movement and shooting
+- `hit(damage)`: subtracts damage; non-lethal hits trigger a white flash (`flashTimer = 0.08`), spark particles, and the enemyHit SFX; returns true when destroyed
+- `destroy()`: adds score, explosion particles, explosion SFX
+- `isOffScreen()`: bounds check with an extra horizontal margin for spiral enemies so they are not culled mid-pattern
+
+There are **9 enemy types**:
+
+| Type | Shape | Movement | Shooting |
+|---|---|---|---|
+| `basic` | Circle | Straight down | None |
+| `zigzag` | Diamond | Sine sway around spawn x (ampX 30, freq 2) while descending | None |
+| `wave` | Rounded diamond | Wider, slower sine sway (ampX 50, freq 1.5) | None |
+| `spiral` | 5-pointed star | Descends while swinging sideways; swing radius grows with descent, capped by `spiralSpeed` | None |
+| `homing` | Triangle rotated to heading | Turns toward the player every 0.25s by up to 0.3 rad | None |
+| `shooter` | Circle + white inner circle | Straight down | Single aimed shot every 2.0s |
+| `shooter_spread` | Pentagon + white inner circle | Straight down | 3-way aimed spread (±0.3 rad) every 2.5s |
+| `shooter_radial` | Hexagon + rotating inner triangle | Straight down | 6-way slowly-rotating radial ring every 3.5s at 0.8× bullet speed |
+| `shooter_spiral` | Rotating square + counter-rotating inner square | Straight down | 2 opposite bullets every 0.3s, angle advancing 22.5°/shot, at 0.7× bullet speed |
 
 **Bullet Class** (js/classes/Bullet.js):
 - Constructor takes position, direction, owner ('player' or 'enemy'), and optional speed
-- `update(dt)`: Moves in calculated direction
-- `draw(ctx)`: Renders with shadow/trail effect
-- `isOffScreen()`: Bounds checking for cleanup
+- `update(dt)`: moves in calculated direction
+- `draw(ctx)`: renders with shadow/trail effect
+- `isOffScreen()`: bounds checking for cleanup
 
 **Particle Class** (js/classes/Particle.js):
 - Constructor takes position, color, lifetime, size, and velocity
-- `update(dt)`: Updates position and lifetime
-- `draw(ctx)`: Renders with alpha fade
-- `isDead()`: Returns true when lifetime expires
+- `update(dt)`: position, lifetime, velocity damping
+- `draw(ctx)`: alpha fade; `isDead()` when lifetime expires
 
 **Star Class** (js/classes/Star.js):
-- Background star with twinkling effect
-- `update(dt)`: Updates brightness animation
-- `draw(ctx)`: Renders star with current brightness
+- Background star with twinkling and downward parallax scroll (30–80 px/s), wrapping to the top with a new random x
 
 **Convention**: All entities have `update(dt)` and `draw(ctx)` methods.
 
 ### Game Systems
 
+#### State Machine and Game Flow
+- States: `'title'` → `'playing'` ⇄ `'paused'` → `'gameover'` → (restart) `'playing'`
+- **Pause**: P or Escape toggles pause; clicking/tapping the canvas while paused resumes. The HUD stays visible while paused.
+- **Auto-pause**: on window `blur`, `gameState.keys` is cleared (held keys would never fire keyup) and a running game pauses automatically.
+- **Restart lockout**: after game over, restart input is ignored for `RESTART_LOCKOUT` (0.8s) so panic taps/held keys can't skip the score screen. The "Retry" hint only renders after the lockout. Keyboard, click, **and** tap all restart from game over (and start from title) via the same `tryStart()` path, which also initializes audio and resets touch controls.
+- **High score**: persisted in localStorage `'orbitBloomHighScore'`; shown on the title screen ("BEST") and on game over ("BEST" or a flashing "NEW RECORD!").
+
+#### Wave Progression (js/config.js + js/main.js)
+- `stageConfigs` holds **4 wave configs**. Each wave lasts **60 seconds** and has **3 phases** (0–20s / 20–40s / 40–60s) with their own `spawnRate`, `maxEnemies`, `allowedTypes`, `enemySpeedMultiplier`, and `bulletSpeed`.
+- When the wave timer hits 0: `triggerPowerUp()` fires and `stageIndex` advances. The **last wave repeats infinitely** — difficulty then comes from power scaling.
+- `triggerPowerUp()` (js/game/power.js): increments `powerLevel`, pops **all enemy bullets** with white particle bursts (clean screen for the new wave), plays the powerUp SFX, fires a center burst + ring of particles, and starts a 2-second banner (`powerUpTimer`).
+- **Duplicated entries in `allowedTypes` act as spawn weights** (e.g., wave 1 phase 3 lists `'basic'` twice to keep shooters a minority).
+- The HUD TIME cell shows both wave and countdown, e.g., `W2 43s`.
+
+#### Power Scaling (js/config.js POWER_PARAMS + js/game/power.js)
+Both sides grow with `gameState.powerLevel` (which increments on every wave clear):
+- **Player** (`getPlayerPowerMultipliers()`): moveSpeed +10%/level **capped at 1.5×**, fireRate +15%/level, bulletSpeed +10%/level, bullet damage +1 every 3 levels
+- **Enemy** (`getEnemyPowerMultipliers()` / `getEffectiveMaxEnemies()`): hp +18%/level, speed +8%/level, spawnRate +5%/level, and maxEnemies +1/level **capped at 30 total**
+
+Applied in: Player.update/shoot (speed/fire rate/bullet speed), collision.js (bullet damage), Enemy constructor (hp/speed), spawn.js (spawn rate/cap).
+
+#### Audio (js/game/audio.js)
+- **WebAudio oscillator one-shots only** — no audio files. Each SFX is a waveform + frequency sweep + decay envelope: `shoot`, `enemyHit`, `explosion`, `playerHit`, `dash`, `powerUp`, `gameOver`.
+- The AudioContext is created **lazily by `initAudio()` on the first user gesture** (called from `tryStart()` in input.js) to satisfy browser autoplay policy; a suspended context is resumed.
+- **M toggles mute** in any state; the choice is persisted in localStorage `'orbitBloomMuted'`. `playSfx(name)` silently no-ops when muted or before audio init.
+
 #### Input Handling (js/game/input.js)
-- **Keyboard**: WASD or arrow keys for movement, Shift/Space for dash
-- **Mouse**: Track position for aiming
-- **Touch**: Full touch control support for mobile devices
-- **Pattern**: Event listeners update `gameState.keys`, `gameState.mouse`, and `gameState.touchMove`
-- **Function**: `initInputHandlers(canvas, getScaleAndOffset)` sets up all input listeners
+- **Keyboard**: WASD or arrow keys move (`gameState.keys`), Shift/Space dashes, P/Escape toggles pause, M toggles mute, and any other key starts/restarts from title or game over.
+- **Mouse**: click only **starts (title), retries (game over, post-lockout), or resumes (paused)**. There is no mouse aiming and no mouse-position tracking.
+- **Touch**: taps on title/game-over/paused screens start/retry/resume; during play, touches feed the virtual controls. `touchend`/`touchcancel` are **always processed regardless of state** so a joystick held at the moment of death can't leak into the next run.
+- **Function**: `initInputHandlers(canvas)` sets up all listeners.
 
 #### Touch Controls (js/game/touch.js)
-- **Virtual Joystick**: Bottom-left circular touch area for movement
-  - Appears when touched, shows direction and distance
-  - Normalized output (-1 to 1) for x and y directions
-  - Maximum displacement clamped for consistent control
-- **Dash Button**: Bottom-right circular button
-  - Visual feedback with cooldown indicator
-  - Triggers player dash ability
-- **Auto-detection**: Automatically enables on touch-capable devices with screens ≤768px
-- **Functions**:
-  - `shouldUseTouchControls()`: Detects if touch controls should be used
-  - `initTouchControls(canvas)`: Initializes touch control positions
-  - `updateTouchControls(dt)`: Updates touch state and applies to gameState
-  - `drawTouchControls(ctx, canvas)`: Renders virtual controls overlay
-
-#### Player Movement (js/classes/Player.js)
-- Immediate response (no inertia)
-- Speed modified by deltaTime
-- Diagonal movement normalized
-- Dash mechanic with speed multiplier and cooldown
-- Clamped to canvas boundaries
+- **Detection is capability-based**: `'ontouchstart' in window || navigator.maxTouchPoints > 0` — **no screen-width gate**, so tablets get the overlay too. Keyboard keeps working regardless. Re-evaluated by `initTouchControls()` on every resize/orientation change.
+- **Virtual Joystick**: claims only the **lower-left area** (x < half the canvas width AND y > 35% of its height, keeping the HUD/incoming-enemy zone free). Single-owner via `touchId` — other touches are ignored. Displacement clamped to 40px and normalized to -1..1 into `gameState.touchMove`.
+- **Dash Button**: bottom-right; its position is **computed dynamically from canvas size** (width−80, height−80) so it survives resize/rotation. It dims during the **real** player cooldown (`player.dashCooldownTimer`) and draws a clockwise **arc sweep** until the dash is ready. Pressing it calls `player.dash()`, which enforces the cooldown.
+- `resetTouchControls()` clears all transient touch state and runs on **every game start**.
+- The overlay only renders while `gameState.state === 'playing'`.
 
 #### Enemy Spawning (js/game/spawn.js)
-- Phase-based spawning controlled by `stageConfigs`
-- Accumulator pattern for smooth spawning
-- `spawnEnemies(dt)` function handles all spawning logic
-- Respects `maxEnemies` limit per phase
-- Random enemy types from `allowedTypes` array
+- Phase-based accumulator pattern: `spawnAccumulator += spawnRate * powerMult.spawnRate * dt`; one enemy spawns per whole unit while under the cap.
+- Effective cap: `min(phase.maxEnemies + powerLevel, 30)` via `getEffectiveMaxEnemies()`.
+- **While the screen is at the cap, the accumulator is clamped to 1** so kills aren't instantly replaced by a burst backlog.
+- Type is picked at random from `allowedTypes` (duplicates = weights); enemies spawn at random x, just above the screen.
 
 #### Shooting Mechanic
-- **Player**: Auto-fire at fixed interval (js/classes/Player.js)
-- **Enemies**: Type-specific shooting (shooter enemies only)
-- Bullets calculate direction on creation
-- Support for both player and enemy bullets
+- **Player**: auto-fire straight up at `shotInterval / fireRateMultiplier` (js/classes/Player.js)
+- **Enemies**: the four shooter types fire aimed / spread / radial / spiral patterns using the phase's `bulletSpeed` (see enemy table)
 
 #### Collision Detection (js/game/collision.js)
-- **Bullet-Enemy**: Circle collision, removes bullet, damages enemy, adds score
-- **Bullet-Player**: Circle collision from enemy bullets
-- **Enemy-Player**: Circle collision with invincibility check
-- Uses distance formula: `sqrt(dx² + dy²)`
-- `checkCollisions()` function handles all collision logic
+- **Player bullet vs enemy**: circle collision; removes the bullet and applies **power-scaled damage** (`getPlayerPowerMultipliers().damage`); enemy removed when `hit()` returns true
+- **Enemy bullet vs player**: circle collision against the player's `hitRadius`
+- **Enemy vs player**: circle collision, skipped while invincible; at most one body hit per frame
+- Uses distance formula: `sqrt(dx² + dy²)`; `checkCollisions()` handles all cases
 
 #### Rendering Pipeline (js/game/render.js)
-1. Clear canvas with gradient background
-2. Apply game coordinate transform
-3. Draw stars (background layer)
-4. Draw particles
-5. Draw bullets
-6. Draw enemies
-7. Draw player
-8. Restore transform
-9. Draw UI overlays (title/game over screens)
+1. `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` — the backing store is devicePixelRatio-scaled; **all drawing happens in CSS pixels**
+2. Clear with gradient background
+3. Apply game coordinate transform (translate offset, scale)
+4. Apply **screen shake** translation while `gameState.shakeTimer > 0` (magnitude = timer × 24)
+5. Draw stars → particles → bullets → enemies → player (player includes the dash cooldown arc; enemies flash white via `flashTimer`)
+6. Restore transform; draw touch controls overlay (screen coordinates)
+7. Draw the **power-up banner** (playing state only): "WAVE X" / "POWER UP!" + "LEVEL N" in the upper third, with a brief screen flash capped at 0.15 alpha so live bullets stay readable
+8. Draw state overlays: title (glowing logo, BEST score, pulsing start prompt, control hints incl. mute state), game over (score, BEST or flashing NEW RECORD!, wave reached, retry hint only after the lockout), or pause
 
 ## Development Conventions
 
@@ -249,20 +283,14 @@ Central state management object and functions:
 1. **Naming Conventions**:
    - `camelCase` for variables and functions
    - `PascalCase` for classes
-   - `UPPER_CASE` for constants (should be in `config` object)
+   - `UPPER_CASE` for exported constants in config.js
 
 2. **Comments**:
    - Section headers for major game systems
-   - Inline comments for complex calculations
-   - No JSDoc currently (can be added)
+   - Inline comments for non-obvious logic (several functions use short JSDoc blocks)
 
-3. **Organization**:
-   - Configuration first
-   - State definitions
-   - Setup code (canvas, event listeners)
-   - Entity classes
-   - Game logic functions
-   - Main game loop
+3. **Organization** (within modules):
+   - Imports first, then constants/state, then exported functions/classes
 
 ### Canvas Drawing Patterns
 
@@ -350,7 +378,7 @@ Assistant:
    - Read spec for enemy type definition
    - Add enemy parameters to config.js
    - Implement enemy class behavior
-   - Add enemy to spawn.js allowed types
+   - Add enemy to stageConfigs allowedTypes
    - Test enemy spawning and behavior
    - Commit changes
 2. Marks "Read spec" as in_progress
@@ -377,19 +405,15 @@ Assistant:
 
 ### Modular Development Workflow
 
-When working with the modular codebase structure:
-
 1. **Adding a New Class**:
    - Create new file in `js/classes/`
    - Export the class: `export class ClassName { }`
-   - Import in files that need it: `import { ClassName } from '../classes/ClassName.js'`
-   - Update js/main.js if needed for initialization
+   - Import where needed: `import { ClassName } from '../classes/ClassName.js'`
 
 2. **Adding a New Game System**:
    - Create new file in `js/game/`
    - Export functions: `export function systemUpdate(dt) { }`
-   - Import in js/main.js: `import { systemUpdate } from './game/system.js'`
-   - Call from appropriate place in game loop
+   - Import in js/main.js and call from the appropriate place in the game loop
 
 3. **Modifying Configuration**:
    - Edit js/config.js only
@@ -397,10 +421,9 @@ When working with the modular codebase structure:
    - Import where needed: `import { NEW_PARAM } from '../config.js'`
 
 4. **Testing Module Changes**:
-   - Open index.html in browser
+   - Serve `src/` over a local static server and open it in a browser
    - Check browser console for import errors
    - Verify functionality works as expected
-   - Use browser DevTools to debug module loading
 
 ### Common Tasks
 
@@ -409,157 +432,124 @@ When working with the modular codebase structure:
 1. **Add to config** (js/config.js):
    ```javascript
    export const ENEMY_PARAMS = {
-     // ... existing types
+     // ... existing 9 types
      newType: { speedY: 100, radius: 10, hp: 2, score: 20, color: '#FF00FF' }
    };
    ```
 
 2. **Implement behavior** (js/classes/Enemy.js):
-   - Add type-specific initialization in constructor
-   - Add type-specific update logic in `update()` method
-   - Add type-specific rendering in `draw()` method
+   - Add type-specific initialization in the constructor (remember: speed must use `this.speedMultiplier`, which already includes power scaling)
+   - Add type-specific update logic in `update()` and rendering in `draw()`
+   - Check `isOffScreen()` margins if the type moves far sideways (see the spiral case)
 
 3. **Enable spawning** (js/config.js):
-   - Add to `allowedTypes` array in desired phase(s):
+   - Add to `allowedTypes` in the desired wave phases; duplicate an entry to increase its spawn weight:
    ```javascript
-   allowedTypes: ['basic', 'zigzag', 'newType']
+   allowedTypes: ['basic', 'basic', 'zigzag', 'newType']
    ```
 
-4. **Test**:
-   - Open index.html in browser
-   - Verify enemy spawns at appropriate time
-   - Check movement, rendering, and collision behavior
+4. **Test**: verify it spawns in the right wave/phase, and check movement, rendering, hit flash, and collisions
 
 #### Adjusting Game Difficulty
 
 Modify values in **js/config.js**:
 
-**Player Difficulty**:
-- `PLAYER_PARAMS.moveSpeed`: Higher = easier dodging
-- `PLAYER_PARAMS.shotInterval`: Lower = more firepower
-- `PLAYER_PARAMS.dashCooldown`: Lower = more frequent dashing
-- `PLAYER_PARAMS.initialLives`: More lives = easier
+**Player**:
+- `PLAYER_PARAMS.moveSpeed` / `shotInterval` / `dashCooldown` (currently 1.5s) / `initialLives`
 
-**Enemy Difficulty**:
-- `ENEMY_PARAMS.{type}.speedY`: Higher = more challenging
-- `ENEMY_PARAMS.{type}.hp`: More HP = harder to kill
-- `ENEMY_PARAMS.{type}.score`: Balance risk/reward
+**Enemy**:
+- `ENEMY_PARAMS.{type}.speedY` / `hp` / `score` / `shotInterval`
 
-**Phase Difficulty** (in `stageConfigs`):
-- `spawnRate`: Higher = more enemies spawn
-- `maxEnemies`: Higher = more enemies on screen
-- `enemySpeedMultiplier`: Multiplies all enemy speeds
-- `bulletSpeed`: Higher = faster enemy bullets
-- `allowedTypes`: Add more difficult enemy types
+**Wave phases** (in `stageConfigs`):
+- `spawnRate`, `maxEnemies`, `enemySpeedMultiplier`, `bulletSpeed`, `allowedTypes` (with duplicates as weights)
+
+**Long-run scaling** (in `POWER_PARAMS`):
+- `player.*PerLevel` and `moveSpeedCap` / `damageEveryLevels`
+- `enemy.hpPerLevel` / `speedPerLevel` / `spawnRatePerLevel` / `maxEnemiesCap`
 
 #### Adding New Controls
 
-1. **Add event listener** (js/game/input.js):
-   ```javascript
-   document.addEventListener('keydown', (e) => {
-     if (e.key === 'YourKey') {
-       // Handle key press
-     }
-   });
-   ```
-
-2. **Store state** (if needed):
-   - For continuous input: `gameState.keys[key] = true`
-   - For one-time actions: Call method directly
-
-3. **Process in update**:
-   - Check state in Player.update() or relevant class
-   - Apply game logic
-
-4. **Example - Adding a special move**:
-   - Add key listener in js/game/input.js
-   - Add cooldown timer to Player class
-   - Implement special move method in Player class
-   - Call method when key pressed and cooldown ready
+1. **Add handling in the keydown listener** (js/game/input.js, inside `initInputHandlers`) — follow the existing M (mute) and P/Escape (pause) patterns, including `return` for keys that must not also start the game
+2. **Store state** if continuous (`gameState.keys[key]`), or call a method directly for one-shot actions (like dash)
+3. **Process in update**: check state in `Player.update()` or the relevant module
+4. Remember every start/restart path goes through `tryStart()`; keep new global keys out of it if they shouldn't trigger a restart
 
 #### Implementing New Features
 
-Reference `docs/spec-orbit-bloom.md` for planned features.
-
 **Currently Implemented**:
-- ✅ Dash mechanic (Shift/Space key)
-- ✅ Multiple enemy types (basic, zigzag, homing, shooter)
-- ✅ Stage/phase system with configurable parameters
-- ✅ Particle effects (trail, explosion)
-- ✅ Life system with invincibility frames
-- ✅ Auto-fire shooting
-- ✅ Modular code architecture
-- ✅ Mobile touch controls (virtual joystick and dash button)
+- ✅ Auto-fire shooting (no click-to-shoot; mouse is not used for aiming)
+- ✅ Dash mechanic (Shift/Space or touch button; 1.5s cooldown with arc indicators)
+- ✅ 9 enemy types (basic, zigzag, wave, spiral, homing, shooter, shooter_spread, shooter_radial, shooter_spiral)
+- ✅ Wave progression (4 wave configs × 3 phases; last wave repeats infinitely)
+- ✅ Progressive power scaling for player and enemies (POWER_PARAMS + game/power.js)
+- ✅ Life system with invincibility frames, screen shake, enemy hit flash
+- ✅ Particle effects (trail, explosion, sparks, power-up bursts)
+- ✅ Pause (P/Escape, auto-pause on window blur)
+- ✅ WebAudio sound effects with persisted mute toggle (M)
+- ✅ High score persistence (localStorage)
+- ✅ Mobile touch controls (virtual joystick + dash button with real cooldown display)
+- ✅ devicePixelRatio-aware rendering
 
 **Planned / Not Yet Implemented**:
-- ⏳ Multiple stages (infrastructure exists, only stage 1 implemented)
-- ⏳ Sound effects and music
-- ⏳ High score persistence
-- ⏳ More enemy types beyond spec
+- ⏳ Background music (only one-shot SFX exist)
+- ⏳ Multiple distinct stage themes (a single `stageConfigs` track exists; no visual/thematic variety per stage)
+- ⏳ More enemy types
 
 **When Implementing New Features**:
 1. Create task breakdown using TodoWrite
-2. Check spec for design requirements
+2. Check the spec for design intent (noting the code has evolved beyond it)
 3. Start with config.js additions
 4. Implement class/module changes
-5. Test incrementally
-6. Commit and push when complete
+5. Test incrementally, commit and push when complete
 
 ### Testing Approach
 
 **No formal test framework** - manual testing workflow:
 
-1. **Local Testing**: Open `index.html` in browser
-2. **Verify**:
-   - Player movement (WASD/arrows)
-   - Mouse tracking and shooting
-   - Enemy spawning and movement
-   - Collision detection
-   - Score updates
-   - FPS counter accuracy
-3. **Performance**: Check FPS stays near 60
-4. **Edge Cases**:
-   - Rapid clicking
-   - Boundary collisions
-   - Many entities on screen
+1. **Local Testing**: serve `src/` with any static server (e.g., `python3 -m http.server`) — ES modules generally do not load from `file://`
+2. **Manual checklist**:
+   - Title screen: starfield animates; any key / click / tap starts the game
+   - Movement (WASD/arrows), auto-fire, dash (Shift/Space) with the cooldown arc around the ship
+   - Pause with P/Escape; resume via key, click, or tap; HUD stays visible; window blur auto-pauses
+   - M toggles sound and persists across reload
+   - Wave transition at 60s: banner appears, enemy bullets pop into particles, HUD shows `W2`
+   - Game over: restart input blocked for ~0.8s, then keyboard/click/tap all retry; high score persists and "NEW RECORD!" flashes when beaten
+   - Touch (DevTools device emulation): joystick appears only in the lower-left area, dash button bottom-right shows a cooldown sweep, rotating/resizing mid-game keeps controls positioned correctly
+3. **Performance**: watch for slowdown with many entities/particles on screen (there is no built-in FPS counter)
+4. **Scripted testing**: the repo is Playwright-driveable — `gameState` is an ES module singleton, so a test can `import('/js/game/state.js')` from the served origin inside `page.evaluate()` and read/manipulate the same live state the game uses
 
 ### Debugging Tips
 
 1. **Module Loading Errors**:
-   - Check browser console for import/export errors
-   - Verify file paths are correct (case-sensitive)
-   - Ensure all imports use `.js` extension
-   - Check that index.html uses `type="module"` in script tag
+   - Check browser console for import/export errors; serve over HTTP, not `file://`
+   - Verify file paths are correct (case-sensitive) and all imports use `.js` extensions
+   - index.html loads js/main.js with `type="module"`
 
 2. **Game State Issues**:
-   - Log `gameState` object: `console.log(gameState)`
-   - Check gameState.state value: 'title', 'playing', or 'gameover'
-   - Verify arrays (enemies, bullets, particles) for unexpected values
+   - Log `gameState`; `state` is one of 'title', 'playing', 'paused', 'gameover'
+   - Check `powerLevel`, `stageIndex`, and `elapsedTime` for wave/difficulty issues
 
 3. **Collision Problems**:
    - Add console.log in `checkCollisions()` (js/game/collision.js)
-   - Log distances and radii to verify collision math
-   - Check if entities have correct hitRadius/radius values
+   - Remember player-bullet damage scales with power level (`getPlayerPowerMultipliers().damage`)
+   - Player body hits use `hitRadius` (6), not the visual `radius` (10)
 
 4. **Spawning Issues**:
-   - Log `gameState.enemies.length` and current phase
-   - Check `spawnAccumulator` value in js/game/spawn.js
-   - Verify `stageConfigs` has correct `allowedTypes`
+   - Log `gameState.enemies.length` vs `getEffectiveMaxEnemies(phase.maxEnemies)`
+   - `spawnAccumulator` is intentionally clamped to 1 while the cap is reached
+   - Verify the current phase's `allowedTypes` (duplicates are weights)
 
 5. **Movement Bugs**:
-   - Log player position in `Player.update()` (js/classes/Player.js)
-   - Check deltaTime value (should be ~0.016 for 60fps)
-   - Verify speed calculations include deltaTime multiplier
+   - Log player position in `Player.update()`; deltaTime should be ~0.016 at 60fps (clamped at 0.05)
+   - Touch input overrides keyboard when the joystick deflection exceeds 0.1
 
 6. **Rendering Issues**:
-   - Check canvas transform (scale, offsetX, offsetY)
-   - Verify ctx.restore() is called after ctx.save()
-   - Log entity positions to ensure they're within GAME_WIDTH/GAME_HEIGHT
+   - render.js starts with `setTransform(dpr, ...)` — all drawing is in CSS pixels; game entities additionally sit under the translate/scale game transform
+   - Verify ctx.restore() pairs with ctx.save(); check `shakeTimer` if the scene jitters
 
-7. **Performance Issues**:
-   - Check number of particles: `gameState.particles.length`
-   - Monitor array sizes in browser DevTools
-   - Verify off-screen entities are being removed
+7. **Audio Issues**:
+   - `playSfx()` is silent until `initAudio()` has run from a user gesture and the context is 'running'
+   - Check the persisted mute flag: localStorage `'orbitBloomMuted'`
 
 ## GitHub Pages Deployment
 
@@ -567,68 +557,48 @@ The game is deployed as a static site on GitHub Pages.
 
 **Deployment Process**:
 1. Push changes to main branch
-2. GitHub Pages serves from root, redirects to src/
+2. GitHub Pages serves from root; the root `index.html` meta-refreshes to `src/`
 3. No build step required
 4. Access at: `https://velgail.github.io/Orbit-Bloom/`
 
 **Project Structure**:
 - Game files are in `src/` directory
-- Root `index.html` redirects to `src/index.html`
+- Root `index.html` redirects to `src/`
 - This separates source code from documentation files
 
 **Important**: All paths must be relative for GitHub Pages to work correctly.
 
 ## Future Development Roadmap
 
-See `docs/spec-orbit-bloom.md` for the complete vision. Key planned features:
+The original phased roadmap from `docs/spec-orbit-bloom.md` is essentially complete:
 
-### Phase 1 (Current Implementation - Partially Complete)
-- ✅ Basic player movement
-- ✅ Click-to-shoot mechanic
-- ✅ Simple enemy spawning
-- ✅ Collision detection
-- ✅ Score tracking
-- ❌ Auto-firing (currently click-to-shoot)
+### Phase 1 (Complete)
+- ✅ Player movement, auto-firing, enemy spawning, collision detection, score tracking
 
-### Phase 2 (Planned)
-- [ ] Dash mechanic with cooldown
-- [ ] Multiple enemy types (zigzag, homing, shooter)
-- [ ] Life system with invincibility frames
-- [ ] Enemy bullets
-- [ ] Particle effects
+### Phase 2 (Complete)
+- ✅ Dash mechanic with cooldown, multiple enemy types, life system with invincibility frames, enemy bullets, particle effects
 
-### Phase 3 (Planned)
-- [ ] Stage system with phases
-- [ ] Mobile touch controls
-- [ ] Game over / retry UI
-- [ ] Time-based survival mode
-- [ ] Proper coordinate scaling system
+### Phase 3 (Complete)
+- ✅ Wave/phase system, mobile touch controls, game over / retry UI (with restart lockout), time-based waves, coordinate scaling + devicePixelRatio rendering
 
-### Phase 4 (Optional)
-- [ ] Sound effects
+### Phase 4 (Partially Complete)
+- ✅ Sound effects (WebAudio oscillators) with mute
+- ✅ High score persistence
 - [ ] Background music
-- [ ] Highscore persistence
-- [ ] Multiple stages
+- [ ] Multiple distinct stage themes (beyond the single repeating wave track)
+- [ ] Additional enemy types
 
 ## Spec Document Reference
 
-The `docs/spec-orbit-bloom.md` file is the authoritative design document (written in Japanese). It contains:
+The `docs/spec-orbit-bloom.md` file is the original design document (written in Japanese). It contains game mechanics specifications, entity behavior definitions, stage configuration design, input handling for PC and mobile, parameter tables, and code structure recommendations.
 
-- Detailed game mechanics specifications
-- Entity behavior definitions
-- Stage configuration system
-- Input handling for PC and mobile
-- Parameter tables for tuning
-- Code structure recommendations
-- Class and function organization
-
-**When making significant changes**, consult this spec to ensure alignment with the intended design.
+**Note**: the implementation has evolved beyond the spec (extra enemy types, power scaling, audio, pause, high score). Consult the spec for original design intent, but **the code is the source of truth** where they disagree.
 
 ## Key Design Principles
 
 1. **Simplicity First**: Keep code readable and maintainable
 2. **No Dependencies**: Pure vanilla JS/HTML/CSS only
-3. **Visual = Code**: All graphics rendered via canvas primitives
+3. **Visual = Code**: All graphics rendered via canvas primitives; all audio synthesized
 4. **Parameterized**: Easy difficulty tuning via config objects
 5. **Frame Independent**: All timing uses delta time
 6. **Beginner Friendly**: Game should be accessible to casual players
@@ -636,17 +606,19 @@ The `docs/spec-orbit-bloom.md` file is the authoritative design document (writte
 ## Common Pitfalls to Avoid
 
 1. **Don't** add external libraries without discussing first
-2. **Don't** use image files for graphics
-3. **Don't** hardcode magic numbers - use config object
+2. **Don't** use image or audio files for assets
+3. **Don't** hardcode magic numbers - put them in config.js
 4. **Don't** forget delta time in movement calculations
 5. **Don't** mutate arrays while iterating forward
 6. **Don't** assume 60 FPS - always use deltaTime
+7. **Don't** bypass `tryStart()` / `resetTouchControls()` when adding restart paths — stale input state leaks into the next run
+8. **Don't** gate `touchend`/`touchcancel` handling on game state
 
 ## Working with AI Assistants
 
 ### Best Practices for AI Development
 
-1. **Reference the Spec**: Always check `docs/spec-orbit-bloom.md` for intended behavior
+1. **Reference the Spec**: Check `docs/spec-orbit-bloom.md` for original intent; trust the code for current behavior
 2. **Maintain Patterns**: Follow existing code structure and naming
 3. **Test Incrementally**: Make small changes and verify in browser
 4. **Preserve Simplicity**: Don't over-engineer solutions
@@ -655,13 +627,13 @@ The `docs/spec-orbit-bloom.md` file is the authoritative design document (writte
 ### Typical Request Patterns
 
 **Good Request**:
-> "Add a dash mechanic as described in docs/spec-orbit-bloom.md section 4.3, using the PLAYER_PARAMS structure recommended in section 8"
+> "Add a new shooter variant that fires a 4-way radial pattern, following the shooter_radial structure in Enemy.js and ENEMY_PARAMS"
 
 **Less Ideal Request**:
 > "Make the game better" (too vague)
 
 **Good Request**:
-> "Implement the zigzag enemy type from the spec with configurable amplitude and frequency"
+> "Retune POWER_PARAMS so enemy HP scales slower after wave 4"
 
 **Less Ideal Request**:
 > "Add some NPM packages for game physics" (violates no-dependency principle)
@@ -681,87 +653,91 @@ Follow the pattern observed in git history:
 - Example: "Implement Orbit-Bloom game with HTML5 Canvas and requestAnimationFrame"
 
 ### Before Committing
-1. Test in browser
+1. Test in browser (served over HTTP)
 2. Verify no console errors
-3. Check FPS stays stable
-4. Verify all features work
+3. Check the game stays smooth with many entities on screen
+4. Run through the manual checklist for anything you touched
 5. Ensure code follows existing patterns
 
 ## Getting Help
 
 ### Documentation Priority
 1. This file (CLAUDE.md) - High-level guidance
-2. `docs/spec-orbit-bloom.md` - Detailed specifications
-3. Code comments in `main.js` - Implementation details
+2. `docs/spec-orbit-bloom.md` - Original design specifications
+3. Code comments in the modules - Implementation details
 4. README.md - Project overview
 
 ### Understanding the Codebase
 
 **Entry Point**:
 - **Start at**: js/main.js
-- **Initialize**: `init()` from js/game/state.js
-- **Input setup**: `initInputHandlers()` from js/game/input.js
+- **Initialize**: `init()` from js/game/state.js, `initInputHandlers(canvas)` from js/game/input.js
 - **Game loop**: `gameLoop()` in js/main.js
 
 **Code Flow**:
-1. **Game loop** → `updateGame(dt)` → `render()`
-2. **Update phase**:
-   - Player.update()
-   - spawnEnemies() from js/game/spawn.js
-   - Enemy.update() for all enemies
-   - Bullet.update() for all bullets
-   - Particle.update() for all particles
-   - checkCollisions() from js/game/collision.js
-   - updateUI() from js/game/ui.js
+1. **Game loop** → `updateGame(dt)` (when playing) → `render()` (always)
+2. **Update phase** (js/main.js `updateGame`):
+   - Wave timer → `triggerPowerUp()` + wave advance on wave clear
+   - `updatePowerTimer(dt)`, `updateTouchControls()`
+   - Player.update(), `spawnEnemies(dt)`, Enemy/Bullet/Particle/Star updates with off-screen/dead cleanup
+   - `checkCollisions()`, `updateUI()`
 3. **Render phase**: render() from js/game/render.js
 
 **Entity Lifecycle**:
-- **Spawn**: Created in spawn.js or class method
+- **Spawn**: Created in spawn.js or class methods
 - **Update**: `update(dt)` called each frame
 - **Draw**: `draw(ctx)` called each frame
 - **Collision**: Checked in collision.js
-- **Remove**: Array.splice() when off-screen or destroyed
+- **Remove**: Array.splice() when off-screen, dead, or destroyed
 
 **State Flow**:
-- **Input** (js/game/input.js) → **gameState** (js/game/state.js) → **Class updates** → **Rendering** (js/game/render.js)
+- **Input** (input.js / touch.js) → **gameState** (state.js) → **Class updates** → **Rendering** (render.js)
 
-**Module Dependencies**:
+**Module Dependencies** (honest picture — classes and game modules are cross-dependent):
 ```
-config.js (no dependencies, exports constants)
-   ↓
-classes/* (import from config.js)
-   ↓
-game/* (import from config.js and classes/*)
-   ↓
-main.js (imports from all modules)
+config.js   ← constants only, imports nothing
+audio.js    ← imports nothing (localStorage + WebAudio)
+
+classes/Bullet.js, Particle.js, Star.js → config.js
+game/power.js     → config.js, game/state.js, classes/Particle.js, game/audio.js
+classes/Player.js → config.js, Bullet, Particle, game/power.js, game/state.js, game/audio.js
+classes/Enemy.js  → config.js, Bullet, Particle, game/power.js, game/audio.js
+game/state.js     → config.js, classes/Player.js, classes/Star.js, game/audio.js
+game/touch.js     → config.js, game/state.js
+game/input.js     → config.js, game/state.js, game/audio.js, game/touch.js
+game/spawn.js     → config.js, game/state.js, classes/Enemy.js, game/power.js
+game/collision.js → game/state.js, game/power.js
+game/ui.js        → game/state.js
+game/render.js    → config.js, game/state.js, game/touch.js, game/audio.js
+main.js           → imports and coordinates everything
 ```
+Note the import cycle state.js ↔ Player.js (Player calls `endGame()`; state.js constructs Player). It works because usage is deferred to runtime — if you add new cycles, keep them function-level, never at module top level.
 
 ## Version Information
 
-- **Current State**: Feature-complete implementation with mobile support
+- **Current State**: Feature-complete implementation with waves, power scaling, audio, pause, high scores, and mobile support
 - **Architecture**: Modular ES6 modules in src/ directory
-- **Spec Version**: Draft v1 (see docs/spec-orbit-bloom.md)
-- **Last Updated**: 2025-11-15
+- **Spec Version**: Draft v1 (see docs/spec-orbit-bloom.md; code has evolved beyond it)
+- **Last Updated**: 2026-07-03
 
 **Major Changes**:
-- 2025-11-15 (latest):
+- 2026-07-03 (latest):
+  - Bug fixes: unified restart paths (keyboard/click/tap) behind `tryStart()` with a 0.8s restart lockout; touch-state leaks fixed (reset on every start, touchend/touchcancel always processed); touch controls and canvas now handle resize/rotation (dynamic dash-button position, DPR re-init); spawn accumulator clamped at the enemy cap; enemy speed power scaling applied to all types at construction; spiral enemies no longer culled mid-pattern
+  - Features: pause state (P/Escape, click/tap resume, auto-pause on window blur), WebAudio SFX module with persisted mute (M), high score persistence, screen shake, enemy white hit-flash, dash cooldown indicators (arc around ship + touch-button sweep), devicePixelRatio-scaled rendering
+  - Balance: enemy hp/speed/spawn power scaling retuned (+18%/+8%/+5% per level), shooter_spiral nerfed, dash cooldown 2.0s → 1.5s, weighted wave-1 spawns via duplicated allowedTypes
+- 2025-11-15:
   - Reorganized project structure (moved code to src/ directory)
-  - Implemented full mobile touch controls (virtual joystick + dash button)
-  - Added js/game/touch.js module for touch control system
-  - Auto-detection for mobile devices (touch + screen size ≤768px)
-- 2025-11-15 (initial):
-  - Refactored from monolithic main.js (~900 lines) to modular architecture
-  - Separated code into js/config.js, js/classes/*, and js/game/*
-  - Implemented all Phase 1 and Phase 2 features from spec
-  - Added comprehensive task management guidelines
+  - Implemented mobile touch controls (virtual joystick + dash button)
+  - Refactored from monolithic main.js (~900 lines) to modular architecture (js/config.js, js/classes/*, js/game/*)
+  - Implemented all Phase 1 and Phase 2 features from spec; added task management guidelines
 
 ## Questions to Ask Before Making Changes
 
-1. Does this align with the spec document?
+1. Does this align with the design intent (spec + current code)?
 2. Does this maintain the "no dependencies" principle?
-3. Will this require changes to the config object?
+3. Will this require changes to config.js?
 4. Does this preserve frame-rate independence?
-5. Is this testable by simply opening index.html?
+5. Is this testable by serving src/ and playing in a browser?
 6. Does this maintain code simplicity?
 
 ---

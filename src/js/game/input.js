@@ -2,25 +2,62 @@
 // Input Handling
 // =========================================
 
-import { gameState, startGame } from './state.js';
+import { gameState, startGame, canRestart } from './state.js';
+import { initAudio, toggleMute } from './audio.js';
 import {
   initTouchControls,
+  resetTouchControls,
   handleTouchStart,
   handleTouchMove,
   handleTouchEnd
 } from './touch.js';
 
 /**
+ * Start (or restart) the game from the title or game-over screen.
+ * After a game over, input is ignored for a short lockout so panic
+ * taps / held keys cannot skip the score screen.
+ */
+function tryStart() {
+  if (gameState.state === 'gameover') {
+    if (!canRestart()) return;
+  } else if (gameState.state !== 'title') {
+    return;
+  }
+  initAudio(); // First user gesture: safe point to create the AudioContext
+  resetTouchControls();
+  startGame();
+}
+
+function togglePause() {
+  if (gameState.state === 'playing') {
+    gameState.state = 'paused';
+  } else if (gameState.state === 'paused') {
+    gameState.state = 'playing';
+  }
+}
+
+/**
  * Initialize input event listeners
  * @param {HTMLCanvasElement} canvas
- * @param {number} scale - Canvas scale factor
- * @param {number} offsetX - Canvas X offset
- * @param {number} offsetY - Canvas Y offset
  */
-export function initInputHandlers(canvas, getScaleAndOffset) {
+export function initInputHandlers(canvas) {
   // Keyboard input
   document.addEventListener('keydown', (e) => {
-    gameState.keys[e.key.toLowerCase()] = true;
+    const key = e.key.toLowerCase();
+
+    // Mute toggle (works in any state, never starts the game)
+    if (key === 'm') {
+      toggleMute();
+      return;
+    }
+
+    // Pause toggle
+    if (key === 'escape' || key === 'p') {
+      togglePause();
+      return;
+    }
+
+    gameState.keys[key] = true;
 
     // Dash on Shift or Space
     if ((e.key === 'Shift' || e.key === ' ') && gameState.state === 'playing' && gameState.player) {
@@ -28,9 +65,12 @@ export function initInputHandlers(canvas, getScaleAndOffset) {
       e.preventDefault();
     }
 
-    // Start game on any key in title screen
-    if (gameState.state === 'title') {
-      startGame();
+    // Start game on any key from the title or game-over screen
+    // (tryStart no-ops in other states). e.repeat is ignored so a
+    // movement key still held from before death cannot auto-restart
+    // the moment the lockout expires.
+    if (!e.repeat) {
+      tryStart();
     }
   });
 
@@ -38,36 +78,36 @@ export function initInputHandlers(canvas, getScaleAndOffset) {
     gameState.keys[e.key.toLowerCase()] = false;
   });
 
-  // Mouse/Touch input
-  canvas.addEventListener('click', () => {
-    if (gameState.state === 'title') {
-      startGame();
-    } else if (gameState.state === 'gameover') {
-      startGame();
+  // Keys released while the window is unfocused never fire keyup here;
+  // clear everything so the ship doesn't drift on its own, and pause
+  // the run since the player is gone
+  window.addEventListener('blur', () => {
+    gameState.keys = {};
+    if (gameState.state === 'playing') {
+      gameState.state = 'paused';
     }
   });
 
-  canvas.addEventListener('mousemove', (e) => {
-    const { scale, offsetX, offsetY } = getScaleAndOffset();
-    const rect = canvas.getBoundingClientRect();
-    const canvasX = e.clientX - rect.left;
-    const canvasY = e.clientY - rect.top;
-    // Convert to game coordinates
-    gameState.mouse.x = (canvasX - offsetX) / scale;
-    gameState.mouse.y = (canvasY - offsetY) / scale;
+  // Mouse input
+  canvas.addEventListener('click', () => {
+    if (gameState.state === 'title' || gameState.state === 'gameover') {
+      tryStart();
+    } else if (gameState.state === 'paused') {
+      togglePause();
+    }
   });
 
   // Initialize touch controls
-  initTouchControls(canvas);
+  initTouchControls();
 
   // Touch support
   canvas.addEventListener('touchstart', (e) => {
-    if (gameState.state === 'title') {
+    if (gameState.state === 'title' || gameState.state === 'gameover') {
       e.preventDefault();
-      startGame();
-    } else if (gameState.state === 'gameover') {
+      tryStart();
+    } else if (gameState.state === 'paused') {
       e.preventDefault();
-      startGame();
+      togglePause();
     } else if (gameState.state === 'playing') {
       handleTouchStart(e, canvas);
     }
@@ -79,15 +119,13 @@ export function initInputHandlers(canvas, getScaleAndOffset) {
     }
   }, { passive: false });
 
+  // Ending a touch is always safe — never gate these on game state,
+  // or a joystick held at the moment of death leaks into the next run
   canvas.addEventListener('touchend', (e) => {
-    if (gameState.state === 'playing') {
-      handleTouchEnd(e);
-    }
+    handleTouchEnd(e);
   }, { passive: false });
 
   canvas.addEventListener('touchcancel', (e) => {
-    if (gameState.state === 'playing') {
-      handleTouchEnd(e);
-    }
+    handleTouchEnd(e);
   }, { passive: false });
 }
