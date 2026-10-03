@@ -3,6 +3,7 @@
 // =========================================
 
 import { gameState, startGame, canRestart } from './state.js';
+import { chooseUpgrade, activateNova } from './evolution.js';
 import { initAudio, toggleMute } from './audio.js';
 import {
   initTouchControls,
@@ -41,19 +42,37 @@ function togglePause() {
  * @param {HTMLCanvasElement} canvas
  */
 export function initInputHandlers(canvas) {
+  document.getElementById('startButton').addEventListener('click', tryStart);
+  document.getElementById('resumeButton').addEventListener('click', togglePause);
+  document.getElementById('retryButton').addEventListener('click', tryStart);
+  document.getElementById('pauseButton').addEventListener('click', togglePause);
+  document.getElementById('soundButton').addEventListener('click', () => { initAudio(); toggleMute(); });
+  document.getElementById('novaButton').addEventListener('click', activateNova);
+  document.querySelectorAll('[data-choice]').forEach(button => {
+    button.addEventListener('click', () => chooseUpgrade(Number(button.dataset.choice)));
+  });
   // Keyboard input
   document.addEventListener('keydown', (e) => {
     const key = e.key.toLowerCase();
+    if (gameState.state === 'upgrading') {
+      if (!e.repeat && ['1', '2', '3'].includes(key)) chooseUpgrade(Number(key) - 1);
+      e.preventDefault();
+      return;
+    }
+    if (key === 'e' && gameState.state === 'playing') {
+      if (!e.repeat) activateNova();
+      return;
+    }
 
     // Mute toggle (works in any state, never starts the game)
     if (key === 'm') {
-      toggleMute();
+      if (!e.repeat) toggleMute();
       return;
     }
 
     // Pause toggle
     if (key === 'escape' || key === 'p') {
-      togglePause();
+      if (!e.repeat) togglePause();
       return;
     }
 

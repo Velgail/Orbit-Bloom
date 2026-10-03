@@ -9,23 +9,51 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
+    <canvas id="gameCanvas" aria-label="Orbit Bloom ゲーム画面"></canvas>
+    <header class="brand"><span class="brand-mark">✳</span> ORBIT BLOOM <span class="edition">/ NOVA</span></header>
+    <nav class="utilities" aria-label="ゲーム設定">
+      <button id="soundButton" aria-label="サウンドを切り替え">SOUND ON</button>
+      <button id="pauseButton" aria-label="ポーズ">Ⅱ</button>
+    </nav>
+
+    <main id="titleScreen" class="scene title-scene">
+      <div class="title-copy">
+        <p class="eyebrow"><span class="status-dot"></span> ENDLESS NEON SURVIVAL · V2</p>
+        <h1>ORBIT<br><span>BLOOM</span><sup>✳</sup></h1>
+        <p class="tagline">その一瞬を、<br>生き延びろ。</p>
+        <p class="intro">光を集め、武器を育て、星の守護者を撃ち抜け。<br>毎回違うビルドで挑む、ネオン・サバイバル。</p>
+        <button id="startButton" class="primary">出撃する <span>↗</span></button>
+        <p class="start-hint">ENTER / CLICK / TAP TO LAUNCH</p>
+        <div class="record"><span>PERSONAL BEST</span><strong id="titleBest">000000</strong></div>
+      </div>
+      <div class="orbit-art" aria-hidden="true">
+        <div class="orbit-ring ring-one"></div><div class="orbit-ring ring-two"></div><div class="orbit-ring ring-three"></div>
+        <div class="orbit-cross"></div><div class="orbit-core">✳</div>
+        <span class="orbit-node node-a">◇</span><span class="orbit-node node-b">✧</span><span class="orbit-node node-c">◈</span>
+        <span class="art-label">OB—02 / PHOTON CORE</span><span class="art-coord">360 : 640<br>SECTOR UNKNOWN</span>
+      </div>
+      <footer class="title-footer"><span>01 / MOVE <b>WASD・矢印 / スティック</b></span><span>02 / DASH <b>SHIFT・SPACE / DASH</b></span><span>03 / NOVA <b>E / NOVA ボタン</b></span></footer>
+    </main>
 
     <div id="gameInfo">
-        <div id="topLeft">
-            <div class="ui-label">SCORE</div>
-            <div class="ui-value" id="score">0</div>
-        </div>
-        <div id="topCenter">
-            <div class="ui-label">TIME</div>
-            <div class="ui-value" id="time">60</div>
-        </div>
-        <div id="topRight">
-            <div class="ui-label">LIVES</div>
-            <div class="ui-value" id="lives">3</div>
-        </div>
+      <div class="hud-top">
+        <div><span class="ui-label">SCORE <em id="combo"></em></span><strong id="score">000000</strong></div>
+        <div class="sector"><span class="ui-label">SECTOR</span><strong id="time">01 / 45s</strong></div>
+        <div class="health"><span class="ui-label">HULL <em id="shield"></em></span><strong id="lives">◆◆◆</strong></div>
+      </div>
+      <div class="growth"><span id="level">LV.01</span><div class="track"><div id="xpFill"></div></div><span id="xpText">0 / 6</span></div>
+      <div id="bossHud"><div><span>WARNING / <b>THE BLOOMKEEPER</b></span><span id="bossPhase">PHASE 01</span></div><div class="track"><div id="bossFill"></div></div></div>
+      <div class="hud-bottom"><span id="buildInfo">CORE SYSTEM ONLINE</span><button id="novaButton" disabled>NOVA <span id="novaText">35%</span><div id="novaFill"></div></button></div>
     </div>
 
+    <section id="upgradeScreen" class="scene modal" hidden aria-labelledby="upgradeHeading">
+      <div class="modal-inner"><p class="eyebrow">EVOLUTION AVAILABLE</p><h2 id="upgradeHeading">次の一手を、選べ。</h2><p class="modal-description">時間は止まっています。強化はこの出撃中ずっと有効。</p>
+      <div class="upgrade-cards">
+        <button class="upgrade-card" data-choice="0"></button><button class="upgrade-card" data-choice="1"></button><button class="upgrade-card" data-choice="2"></button>
+      </div><p class="start-hint">1 / 2 / 3 キー、またはカードをタップ</p></div>
+    </section>
+    <section id="pauseScreen" class="scene modal" hidden><div class="modal-inner compact"><p class="eyebrow">SIGNAL ON HOLD</p><h2>ひと息、つこう。</h2><p class="modal-description">P / ESC またはボタンで再開</p><button id="resumeButton" class="primary">戦線に戻る <span>↗</span></button></div></section>
+    <section id="gameoverScreen" class="scene modal" hidden><div class="modal-inner compact"><p class="eyebrow" id="resultLabel">RUN COMPLETE</p><h2>光は、また咲く。</h2><p class="result-score" id="resultScore">0</p><div class="result-stats"><span>SECTOR <b id="resultWave"></b></span><span>KILLS <b id="resultKills"></b></span><span>MAX COMBO <b id="resultCombo"></b></span></div><p class="modal-description" id="resultBest"></p><button id="retryButton" class="primary">もう一度、出撃 <span>↗</span></button></div></section>
     <script type="module" src="js/main.js"></script>
 </body>
 </html>

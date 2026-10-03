@@ -13,11 +13,11 @@ import { getEnemyPowerMultipliers, getEffectiveMaxEnemies } from './power.js';
  */
 export function spawnEnemies(dt) {
   const phase = getCurrentPhase();
-  if (!phase) return;
+  if (!phase || gameState.bossSpawned) return;
 
   // Apply power multiplier to spawn rate; the on-screen cap also grows with power level
   const powerMult = getEnemyPowerMultipliers();
-  const effectiveSpawnRate = phase.spawnRate * powerMult.spawnRate;
+  const effectiveSpawnRate = (phase.spawnRate * 2.4 + 0.6) * powerMult.spawnRate;
   const maxEnemies = getEffectiveMaxEnemies(phase.maxEnemies);
 
   gameState.spawnAccumulator += effectiveSpawnRate * dt;

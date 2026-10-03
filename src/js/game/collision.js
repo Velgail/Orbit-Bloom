@@ -12,7 +12,7 @@ export function checkCollisions() {
   if (!gameState.player) return;
 
   // Player bullets vs enemies (bullet damage grows with power level)
-  const bulletDamage = getPlayerPowerMultipliers().damage;
+  const bulletDamage = getPlayerPowerMultipliers().damage + (gameState.upgrades.damage || 0);
   for (let i = gameState.bullets.length - 1; i >= 0; i--) {
     const bullet = gameState.bullets[i];
     if (bullet.owner !== 'player') continue;
@@ -42,9 +42,15 @@ export function checkCollisions() {
     const dy = bullet.y - gameState.player.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
+    if (!bullet.grazed && dist < 25 && dist >= bullet.radius + gameState.player.hitRadius && !gameState.player.isInvincible()) {
+      bullet.grazed = true;
+      gameState.nova = Math.min(100, gameState.nova + 2);
+      gameState.score += 2;
+    }
     if (dist < bullet.radius + gameState.player.hitRadius) {
       gameState.bullets.splice(i, 1);
       gameState.player.hit();
+      if (gameState.state === 'gameover') return;
     }
   }
 

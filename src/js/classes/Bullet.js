@@ -41,7 +41,9 @@ export class Bullet {
 
     ctx.fillStyle = this.color;
     ctx.beginPath();
-    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    if (this.owner === 'player') {
+      ctx.ellipse(this.x, this.y, 1.8, 6, Math.atan2(this.vx, -this.vy), 0, Math.PI * 2);
+    } else ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.shadowBlur = 0;

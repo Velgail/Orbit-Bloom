@@ -1,5 +1,16 @@
 # CLAUDE.md - AI Assistant Guide for Orbit-Bloom
 
+## NOVA edition: current implementation
+
+The game now uses 45-second survival sectors followed by a telegraphed two-phase boss. Defeating the boss advances `gameState.wave` (uncapped); `stageIndex` only selects one of four enemy phase tables. Do not use `stageIndex + 1` as the displayed sector number. The older descriptions below document the original game and are historical where they conflict with this section.
+
+- `game/evolution.js`: XP pickups, 3-choice level upgrades, combo rewards, shields, orbit drones, NOVA and effects. `upgrading` freezes simulation until an explicit card/key choice. Upgrade ranks reset per run.
+- `classes/Boss.js`: guardian movement, entry protection, telegraphed radial/aimed attacks, enraged phase, collision interface.
+- `game/ui.js` and `src/index.html`: DOM title, HUD, accessible buttons, upgrade/pause/result panels; Canvas handles the world. UI updates in every game state.
+- `tests/smoke.cjs`: browser functional checks. Serve `src/` with the README command, then `node tests/smoke.cjs`. Requires development-only Playwright and Chromium, supplied by the cloud image; no game runtime dependencies or build step.
+- Keep gameplay changes modular and preserve desktop/touch parity. Test state transitions, reset behavior, and boss/upgrade edge cases with the browser suite.
+
+
 This document provides comprehensive guidance for AI assistants working with the Orbit-Bloom codebase.
 
 ## Project Overview

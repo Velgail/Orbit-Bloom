@@ -6,6 +6,7 @@ import { GAME_WIDTH, GAME_HEIGHT, ENEMY_PARAMS } from '../config.js';
 import { Bullet } from './Bullet.js';
 import { spawnBurst } from './Particle.js';
 import { getEnemyPowerMultipliers } from '../game/power.js';
+import { rewardKill } from '../game/evolution.js';
 import { playSfx } from '../game/audio.js';
 
 export class Enemy {
@@ -180,7 +181,7 @@ export class Enemy {
   }
 
   destroy() {
-    this.gameState.score += this.params.score;
+    rewardKill(this);
     playSfx('explosion');
 
     // Create explosion particles

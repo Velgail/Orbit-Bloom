@@ -2,6 +2,8 @@
 // Orbit-Bloom - Main Entry Point
 // =========================================
 
+import { Boss } from './classes/Boss.js';
+import { updateEvolution } from './game/evolution.js';
 import { GAME_WIDTH, GAME_HEIGHT, stageConfigs } from './config.js';
 import { gameState, init, getCurrentPhase } from './game/state.js';
 import { initInputHandlers } from './game/input.js';
@@ -36,12 +38,13 @@ function resizeCanvas() {
 
   // Calculate scale to fit game area (in CSS pixels)
   const scaleX = viewWidth / GAME_WIDTH;
-  const scaleY = viewHeight / GAME_HEIGHT;
+  const fieldTop = 140;
+  const scaleY = Math.max(150, viewHeight - fieldTop - 40) / GAME_HEIGHT;
   scale = Math.min(scaleX, scaleY);
 
   // Calculate offset to center the game (in CSS pixels)
   offsetX = (viewWidth - GAME_WIDTH * scale) / 2;
-  offsetY = (viewHeight - GAME_HEIGHT * scale) / 2;
+  offsetY = fieldTop + Math.max(0, (viewHeight - fieldTop - 40 - GAME_HEIGHT * scale) / 2);
 
   // Touch controls depend on the viewport: re-evaluate on every resize
   initTouchControls();
@@ -63,16 +66,23 @@ function updateGame(dt) {
   gameState.elapsedTime += dt;
   gameState.timeLeft = stageConfigs[gameState.stageIndex].duration - gameState.elapsedTime;
 
-  if (gameState.timeLeft <= 0) {
-    // Wave cleared! Trigger power-up and advance to next wave
+  // Each sector culminates in a boss. Its defeat, rather than a timer,
+  // opens the next sector (including endless waves beyond wave four).
+  if (gameState.elapsedTime >= 45 && !gameState.bossSpawned) {
+    gameState.bossSpawned = true;
+    gameState.boss = new Boss(gameState);
+    gameState.enemies = [gameState.boss];
+    gameState.bullets = gameState.bullets.filter(b => b.owner === 'player');
+  }
+  if (gameState.bossSpawned && gameState.boss?.hp <= 0) {
     triggerPowerUp();
+    gameState.wave++;
+    gameState.stageIndex = Math.min(gameState.wave - 1, stageConfigs.length - 1);
     gameState.elapsedTime = 0;
-
-    // Progress to next wave (cap at last wave which repeats infinitely)
-    if (gameState.stageIndex < stageConfigs.length - 1) {
-      gameState.stageIndex++;
-    }
-    // If at max wave, stay there and rely on power scaling for difficulty
+    gameState.timeLeft = 60;
+    gameState.boss = null;
+    gameState.bossSpawned = false;
+    gameState.lives = Math.min(5, gameState.lives + 1);
   }
 
   // Update power-up timer
@@ -128,8 +138,7 @@ function updateGame(dt) {
   // Check collisions
   checkCollisions();
 
-  // Update UI
-  updateUI();
+  updateEvolution(dt);
 }
 
 // =========================================
@@ -155,6 +164,7 @@ function gameLoop(currentTime) {
   // Screen shake decays in every state so the game-over screen settles
   gameState.shakeTimer = Math.max(0, gameState.shakeTimer - deltaTime);
 
+  updateUI();
   render(ctx, canvas, scale, offsetX, offsetY, dpr);
 
   requestAnimationFrame(gameLoop);

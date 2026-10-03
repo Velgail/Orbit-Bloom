@@ -7,6 +7,7 @@ import { Bullet } from './Bullet.js';
 import { Particle, spawnBurst } from './Particle.js';
 import { getPlayerPowerMultipliers } from '../game/power.js';
 import { endGame } from '../game/state.js';
+import { emitRing } from '../game/evolution.js';
 import { playSfx } from '../game/audio.js';
 
 export class Player {
@@ -100,7 +101,7 @@ export class Player {
     // Auto-fire (with power scaling for fire rate)
     if (this.shotTimer <= 0) {
       this.shoot();
-      this.shotTimer = PLAYER_PARAMS.shotInterval / powerMult.fireRate;
+      this.shotTimer = PLAYER_PARAMS.shotInterval / (powerMult.fireRate * (1 + (this.gameState.upgrades.rapid || 0) * 0.2));
     }
 
     // Create trail particles when moving
@@ -112,8 +113,11 @@ export class Player {
   shoot() {
     const powerMult = getPlayerPowerMultipliers();
     const bulletSpeed = 300 * powerMult.bulletSpeed;
-    const bullet = new Bullet(this.x, this.y, 0, -1, 'player', bulletSpeed);
-    this.gameState.bullets.push(bullet);
+    const spread = this.gameState.upgrades.spread || 0;
+    for (let i = -spread; i <= spread; i++) {
+      const angle = -Math.PI / 2 + i * 0.12;
+      this.gameState.bullets.push(new Bullet(this.x, this.y - 12, Math.cos(angle), Math.sin(angle), 'player', bulletSpeed));
+    }
     playSfx('shoot');
   }
 
@@ -125,8 +129,9 @@ export class Player {
     if (this.dashCooldownTimer <= 0 && !this.isDashing) {
       this.isDashing = true;
       this.dashTimer = PLAYER_PARAMS.dashDuration;
-      this.dashCooldownTimer = PLAYER_PARAMS.dashCooldown;
-      this.invincibleTimer = PLAYER_PARAMS.dashDuration; // Invincible during dash
+      this.dashCooldownTimer = PLAYER_PARAMS.dashCooldown / (1 + (this.gameState.upgrades.dash || 0) * 0.25);
+      emitRing(this.x, this.y, '#40E0FF', 50);
+      this.invincibleTimer = Math.max(this.invincibleTimer, PLAYER_PARAMS.dashDuration); // Preserve longer NOVA/shield protection
       playSfx('dash');
       return true;
     }
@@ -135,6 +140,15 @@ export class Player {
 
   hit() {
     if (this.invincibleTimer <= 0) {
+      if (this.gameState.shield > 0) {
+        this.gameState.shield--;
+        this.invincibleTimer = 1;
+        emitRing(this.x, this.y, '#a9ffce', 80);
+        playSfx('dash');
+        return;
+      }
+      this.gameState.combo = 0;
+      this.gameState.comboTimer = 0;
       this.gameState.lives--;
       this.invincibleTimer = PLAYER_PARAMS.invincibleDurationOnHit;
       this.gameState.shakeTimer = 0.25;
@@ -160,7 +174,7 @@ export class Player {
    * arc and the touch dash button so the two indicators never disagree.
    */
   dashCooldownRatio() {
-    return Math.max(0, this.dashCooldownTimer) / PLAYER_PARAMS.dashCooldown;
+    return Math.max(0, this.dashCooldownTimer) / (PLAYER_PARAMS.dashCooldown / (1 + (this.gameState.upgrades.dash || 0) * 0.25));
   }
 
   draw(ctx) {
@@ -175,21 +189,13 @@ export class Player {
       ctx.stroke();
     }
 
-    // Body (circle)
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = this.isDashing ? '#80F0FF' : this.color;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.radius * (this.isDashing ? 1.2 : 1), 0, Math.PI * 2);
-    ctx.fill();
-
-    // Wing (triangle below)
-    ctx.fillStyle = this.isDashing ? '#80F0FF' : this.color;
-    ctx.beginPath();
-    ctx.moveTo(this.x, this.y + this.radius);
-    ctx.lineTo(this.x - this.radius * 0.6, this.y + this.radius * 1.8);
-    ctx.lineTo(this.x + this.radius * 0.6, this.y + this.radius * 1.8);
-    ctx.closePath();
-    ctx.fill();
+    // Faceted photon ship with a bright hitbox core.
+    ctx.save();ctx.translate(this.x, this.y);ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#123d51';ctx.strokeStyle = this.isDashing ? '#fff' : '#64e4e8';ctx.lineWidth = 1.5;
+    ctx.beginPath();ctx.moveTo(0, -15);ctx.lineTo(12, 12);ctx.lineTo(0, 7);ctx.lineTo(-12, 12);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.fillStyle = '#f1f4ec';ctx.beginPath();ctx.arc(0, 0, 3, 0, Math.PI * 2);ctx.fill();
+    ctx.fillStyle = '#c5ff78';ctx.beginPath();ctx.moveTo(-4, 11);ctx.lineTo(0, 19 + Math.sin(performance.now()/45) * 4);ctx.lineTo(4, 11);ctx.fill();
+    ctx.restore();
 
     ctx.globalAlpha = 1.0;
 

@@ -21,6 +21,11 @@ function loadHighScore() {
 export const gameState = {
   state: 'title', // 'title', 'playing', 'paused', 'gameover'
   score: 0,
+  wave: 1, level: 1, xp: 0, xpNext: 6,
+  combo: 0, comboTimer: 0, bestCombo: 0, kills: 0,
+  nova: 35, novaTimer: 0, boss: null, bossSpawned: false,
+  pickups: [], rings: [], messages: [], choices: [],
+  upgrades: {}, shield: 0, droneTimer: 0,
   highScore: loadHighScore(),
   isNewRecord: false,
   timeLeft: 0,
@@ -59,6 +64,10 @@ export function init() {
  */
 export function startGame() {
   gameState.state = 'playing';
+  Object.assign(gameState, {wave: 1, level: 1, xp: 0, xpNext: 6, combo: 0,
+    comboTimer: 0, bestCombo: 0, kills: 0, nova: 35, novaTimer: 0,
+    boss: null, bossSpawned: false, pickups: [], rings: [], messages: [],
+    choices: [], upgrades: {}, shield: 0, droneTimer: 0});
   gameState.score = 0;
   gameState.isNewRecord = false;
   gameState.lives = PLAYER_PARAMS.initialLives;
